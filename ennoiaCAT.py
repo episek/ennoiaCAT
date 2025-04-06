@@ -149,146 +149,147 @@ if prompt := st.chat_input("Ask Ennoia:"):
     keywords = ["start","stop","center","span","rbw"]
     #matches = [word for word in keywords if word in prompt.lower()]
     matches = [word for word in prompt.split() if word.lower() in [k.lower() for k in keywords]]
-    print(matches)
-    startf = extract_numbers(prompt)
-    if startf:
-            #start = float(match.group())
-        print(startf)
-        # Call another script
-        #fname = r"C:\Users\rices\OneDrive\startup\tinySA\tinySA.py"
-        fname = "tinySA.py"
-        args1 = []
-        args2 = []
-        response1 = ""
-        response2 = ""
-        num_elements = len(startf)
-        print(num_elements)
-        i = 0
-        for num in startf:
-            #string2 = float(num)
-            if "start" in matches[i]:
-                num1 = float(startf[i])
-                str1e = f"{num1:.2e}" 
-                args1 = ['-p', '-S', str1e]
-                response1 = (f"{r"Setting start frequency to "}{str1e} {" Hz"}")
-            if "stop" in matches[i]:
-                num2 = float(startf[i])
-                str2e = f"{num2:.2e}"
-                args2 = ['-p', '-E', str2e]
-                response2 = (f"{r"Setting stop frequency to "}{str2e} {" Hz"}")
-            if "center" in matches[i]:
-                num1 = float(startf[i])
-            if "span" in matches[i]:
-                num1e = num1 - float(startf[i])/2
-                num2e = num1 + float(startf[i])/2
-                str1e = f"{num1e:.2e}" 
-                str2e = f"{num2e:.2e}" 
-                args1 = ['-p', '-S', str1e]
-                args2 = ['-p', '-E', str2e]
-                response1 = (f"{r"Setting start frequency to "}{str1e} {" Hz"}")
-                response2 = (f"{r"Setting stop frequency to "}{str2e} {" Hz"}")
-            i+=1
-        combined_string = f"{fname} {args1,args2}"
-        print(combined_string)
-        #subprocess.run(['python', fname] + args)
+    if matches:
+        print(matches)
+        startf = extract_numbers(prompt)
+        if startf:
+                #start = float(match.group())
+            print(startf)
+            # Call another script
+            #fname = r"C:\Users\rices\OneDrive\startup\tinySA\tinySA.py"
+            fname = "tinySA.py"
+            args1 = []
+            args2 = []
+            response1 = ""
+            response2 = ""
+            num_elements = len(startf)
+            print(num_elements)
+            i = 0
+            for num in startf:
+                #string2 = float(num)
+                if "start" in matches[i]:
+                    num1 = float(startf[i])
+                    str1e = f"{num1:.2e}" 
+                    args1 = ['-p', '-S', str1e]
+                    response1 = (f"{r"Setting start frequency to "}{str1e} {" Hz"}")
+                if "stop" in matches[i]:
+                    num2 = float(startf[i])
+                    str2e = f"{num2:.2e}"
+                    args2 = ['-p', '-E', str2e]
+                    response2 = (f"{r"Setting stop frequency to "}{str2e} {" Hz"}")
+                if "center" in matches[i]:
+                    num1 = float(startf[i])
+                if "span" in matches[i]:
+                    num1e = num1 - float(startf[i])/2
+                    num2e = num1 + float(startf[i])/2
+                    str1e = f"{num1e:.2e}" 
+                    str2e = f"{num2e:.2e}" 
+                    args1 = ['-p', '-S', str1e]
+                    args2 = ['-p', '-E', str2e]
+                    response1 = (f"{r"Setting start frequency to "}{str1e} {" Hz"}")
+                    response2 = (f"{r"Setting stop frequency to "}{str2e} {" Hz"}")
+                i+=1
+            combined_string = f"{fname} {args1,args2}"
+            print(combined_string)
+            #subprocess.run(['python', fname] + args)
 
-        #from streamlit.runtime.scriptrunner import add_script_run_ctx,get_script_run_ctx
-        #from subprocess import Popen
-        #ctx = get_script_run_ctx()
-        ##Some code##
-        
-        
-        parser = OptionParser(usage="%prog: [options]")
-        parser.add_option("-p", "--plot", dest="plot",
-                      action="store_true", default=False,
-                      help="plot rectanglar", metavar="PLOT")
-        parser.add_option("-c", "--scan", dest="scan",
-                      action="store_true", default=False,
-                      help="scan by script", metavar="SCAN")
-        parser.add_option("-S", "--start", dest="start",
-                      type="float", default=1e6,
-                      help="start frequency", metavar="START")
-        parser.add_option("-E", "--stop", dest="stop",
-                      type="float", default=900e6,
-                      help="stop frequency", metavar="STOP")
-        parser.add_option("-N", "--points", dest="points",
-                      type="int", default=101,
-                      help="scan points", metavar="POINTS")
-        parser.add_option("-P", "--port", type="int", dest="port",
-                      help="port", metavar="PORT")
-        parser.add_option("-d", "--dev", dest="device",
-                      help="device node", metavar="DEV")
-        parser.add_option("-v", "--verbose",
-                      action="store_true", dest="verbose", default=False,
-                      help="verbose output")
-        parser.add_option("-C", "--capture", dest="capture",
-                      help="capture current display to FILE", metavar="FILE")
-        parser.add_option("-e", dest="command", action="append",
-                      help="send raw command", metavar="COMMAND")
-        parser.add_option("-o", dest="save",
-                      help="write CSV file", metavar="SAVE")
-        #args = ["-S", string2]
-        args = args1 + args2
-        (opt, args1e) = parser.parse_args(args)
+            #from streamlit.runtime.scriptrunner import add_script_run_ctx,get_script_run_ctx
+            #from subprocess import Popen
+            #ctx = get_script_run_ctx()
+            ##Some code##
+            
+            
+            parser = OptionParser(usage="%prog: [options]")
+            parser.add_option("-p", "--plot", dest="plot",
+                          action="store_true", default=False,
+                          help="plot rectanglar", metavar="PLOT")
+            parser.add_option("-c", "--scan", dest="scan",
+                          action="store_true", default=False,
+                          help="scan by script", metavar="SCAN")
+            parser.add_option("-S", "--start", dest="start",
+                          type="float", default=1e6,
+                          help="start frequency", metavar="START")
+            parser.add_option("-E", "--stop", dest="stop",
+                          type="float", default=900e6,
+                          help="stop frequency", metavar="STOP")
+            parser.add_option("-N", "--points", dest="points",
+                          type="int", default=101,
+                          help="scan points", metavar="POINTS")
+            parser.add_option("-P", "--port", type="int", dest="port",
+                          help="port", metavar="PORT")
+            parser.add_option("-d", "--dev", dest="device",
+                          help="device node", metavar="DEV")
+            parser.add_option("-v", "--verbose",
+                          action="store_true", dest="verbose", default=False,
+                          help="verbose output")
+            parser.add_option("-C", "--capture", dest="capture",
+                          help="capture current display to FILE", metavar="FILE")
+            parser.add_option("-e", dest="command", action="append",
+                          help="send raw command", metavar="COMMAND")
+            parser.add_option("-o", dest="save",
+                          help="write CSV file", metavar="SAVE")
+            #args = ["-S", string2]
+            args = args1 + args2
+            (opt, args1e) = parser.parse_args(args)
 
-        nv = tinySA.tinySA(opt.device or getport())
+            nv = tinySA.tinySA(opt.device or getport())
 
-        if opt.command:
-            print(opt.command)
-            for c in opt.command:
-                nv.send_command(c + "\r")
-                data = nv.fetch_data()
-                print(data)
+            if opt.command:
+                print(opt.command)
+                for c in opt.command:
+                    nv.send_command(c + "\r")
+                    data = nv.fetch_data()
+                    print(data)
 
-        if opt.capture:
-            print("capturing...")
-            img = nv.capture()
-            img.save(opt.capture)
-            exit(0)
+            if opt.capture:
+                print("capturing...")
+                img = nv.capture()
+                img.save(opt.capture)
+                exit(0)
 
- #   nv.set_port(opt.port)
-        if opt.start or opt.stop or opt.points:
-            print(opt.start)
-            nv.set_frequencies(opt.start, opt.stop, opt.points)
-#    plot = opt.plot 
-        if opt.plot or opt.save or opt.scan:
-            p = int(opt.port) if opt.port else 0
-            if opt.scan or opt.points > 101:
-                s = nv.scan()
-                s = s[p]
-            else:
-                if opt.start or opt.stop:
-                    nv.set_sweep(opt.start, opt.stop)
-                    nv.fetch_frequencies()
-                    s = nv.data(p)
-#            nv.fetch_frequencies()
-        if opt.save:
-            nv.writeCSV(s,opt.save)
-        if opt.plot:
-            nv.logmag(s)
-            #fig = plt.fig()
-            # Adding axis labels
-            plt.xlabel("Frequency (Hz)")  # Name for the x-axis
-            plt.ylabel("Signal strength (dBm)")  # Name for the y-axis
+     #   nv.set_port(opt.port)
+            if opt.start or opt.stop or opt.points:
+                print(opt.start)
+                nv.set_frequencies(opt.start, opt.stop, opt.points)
+    #    plot = opt.plot 
+            if opt.plot or opt.save or opt.scan:
+                p = int(opt.port) if opt.port else 0
+                if opt.scan or opt.points > 101:
+                    s = nv.scan()
+                    s = s[p]
+                else:
+                    if opt.start or opt.stop:
+                        nv.set_sweep(opt.start, opt.stop)
+                        nv.fetch_frequencies()
+                        s = nv.data(p)
+    #            nv.fetch_frequencies()
+            if opt.save:
+                nv.writeCSV(s,opt.save)
+            if opt.plot:
+                nv.logmag(s)
+                #fig = plt.fig()
+                # Adding axis labels
+                plt.xlabel("Frequency (Hz)")  # Name for the x-axis
+                plt.ylabel("Signal strength (dBm)")  # Name for the y-axis
 
-            # Adding a title (optional)
-            plt.title("Signal strength (dBm) vs Frequency (Hz)")
-            st.pyplot(plt.gcf())
-            #st.pyplot(nv.capture())
-            #st.write(response)
-            #nv.close()
-            #pl.show()
-        
-        #process = Popen(['python',fname] + args, shell=True)
-        #add_script_run_ctx(process,ctx)
-        nv.close()
-        #response = (f"{r"Setting start frequency to "}{num} {" Hz"}")
-        print(response1)
-        print(response2)
-        time.sleep(1)
-        st.write(response1)
-        st.write(response2)
-        #print(stream)
+                # Adding a title (optional)
+                plt.title("Signal strength (dBm) vs Frequency (Hz)")
+                st.pyplot(plt.gcf())
+                #st.pyplot(nv.capture())
+                #st.write(response)
+                #nv.close()
+                #pl.show()
+            
+            #process = Popen(['python',fname] + args, shell=True)
+            #add_script_run_ctx(process,ctx)
+            nv.close()
+            #response = (f"{r"Setting start frequency to "}{num} {" Hz"}")
+            print(response1)
+            print(response2)
+            time.sleep(1)
+            st.write(response1)
+            st.write(response2)
+            #print(stream)
     else:
         response = st.write_stream(stream)
         #print(response) 
@@ -315,5 +316,6 @@ if prompt := st.chat_input("Ask Ennoia:"):
     #display_content(response,"assistant")
     # Add response message to chat history
     #response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response1})
-    st.session_state.messages.append({"role": "assistant", "content": response2})
+    if matches:
+        st.session_state.messages.append({"role": "assistant", "content": response1})
+        st.session_state.messages.append({"role": "assistant", "content": response2})
