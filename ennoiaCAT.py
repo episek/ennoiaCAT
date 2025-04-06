@@ -14,6 +14,7 @@ from serial.tools import list_ports
 import tinySA
 from optparse import OptionParser
 import os
+import time
 
 VID = 0x0483 #1155
 PID = 0x5740 #22336
@@ -29,6 +30,9 @@ def getport() -> str:
         else:
             st.write("No Device found")
     raise OSError("device not found")
+
+port_list = [port.device for port in list_ports.comports()]
+print("Available ports:", port_list)
 
 
 def extract_numbers(input_string):
@@ -52,6 +56,7 @@ st.markdown(
 
 # Replace with your actual API key
 api_key = os.getenv("OPENAI_API_KEY")
+print(api_key)
 
 
 # Verify if the API key is valid
@@ -140,8 +145,11 @@ if prompt := st.chat_input("Ask Ennoia:"):
    # print(" Generating Ennoia response...")
 #        match = re.search(r"[-+]?\d*\.\d+e[-+]?\d+", prompt)
         #match = re.search(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", prompt)
- 
-
+        
+    keywords = ["start","stop","center","span","rbw"]
+    #matches = [word for word in keywords if word in prompt.lower()]
+    matches = [word for word in prompt.split() if word.lower() in [k.lower() for k in keywords]]
+    print(matches)
     startf = extract_numbers(prompt)
     if startf:
             #start = float(match.group())
@@ -149,10 +157,38 @@ if prompt := st.chat_input("Ask Ennoia:"):
         # Call another script
         #fname = r"C:\Users\rices\OneDrive\startup\tinySA\tinySA.py"
         fname = "tinySA.py"
+        args1 = []
+        args2 = []
+        response1 = ""
+        response2 = ""
+        num_elements = len(startf)
+        print(num_elements)
+        i = 0
         for num in startf:
-            string2 = float(num)
-        args = ['-p', '-S', num]
-        combined_string = f"{fname} {args}"
+            #string2 = float(num)
+            if "start" in matches[i]:
+                num1 = float(startf[i])
+                str1e = f"{num1:.2e}" 
+                args1 = ['-p', '-S', str1e]
+                response1 = (f"{r"Setting start frequency to "}{str1e} {" Hz"}")
+            if "stop" in matches[i]:
+                num2 = float(startf[i])
+                str2e = f"{num2:.2e}"
+                args2 = ['-p', '-E', str2e]
+                response2 = (f"{r"Setting stop frequency to "}{str2e} {" Hz"}")
+            if "center" in matches[i]:
+                num1 = float(startf[i])
+            if "span" in matches[i]:
+                num1e = num1 - float(startf[i])/2
+                num2e = num1 + float(startf[i])/2
+                str1e = f"{num1e:.2e}" 
+                str2e = f"{num2e:.2e}" 
+                args1 = ['-p', '-S', str1e]
+                args2 = ['-p', '-E', str2e]
+                response1 = (f"{r"Setting start frequency to "}{str1e} {" Hz"}")
+                response2 = (f"{r"Setting stop frequency to "}{str2e} {" Hz"}")
+            i+=1
+        combined_string = f"{fname} {args1,args2}"
         print(combined_string)
         #subprocess.run(['python', fname] + args)
 
@@ -192,7 +228,8 @@ if prompt := st.chat_input("Ask Ennoia:"):
         parser.add_option("-o", dest="save",
                       help="write CSV file", metavar="SAVE")
         #args = ["-S", string2]
-        (opt, args1) = parser.parse_args(args)
+        args = args1 + args2
+        (opt, args1e) = parser.parse_args(args)
 
         nv = tinySA.tinySA(opt.device or getport())
 
@@ -245,9 +282,12 @@ if prompt := st.chat_input("Ask Ennoia:"):
         #process = Popen(['python',fname] + args, shell=True)
         #add_script_run_ctx(process,ctx)
         nv.close()
-        response = (f"{r"Setting start frequency to "}{num} {" Hz"}")
-        print(response)
-        st.write(response)
+        #response = (f"{r"Setting start frequency to "}{num} {" Hz"}")
+        print(response1)
+        print(response2)
+        time.sleep(1)
+        st.write(response1)
+        st.write(response2)
         #print(stream)
     else:
         response = st.write_stream(stream)
@@ -275,4 +315,5 @@ if prompt := st.chat_input("Ask Ennoia:"):
     #display_content(response,"assistant")
     # Add response message to chat history
     #response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.session_state.messages.append({"role": "assistant", "content": response1})
+    st.session_state.messages.append({"role": "assistant", "content": response2})
