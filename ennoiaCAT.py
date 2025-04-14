@@ -112,6 +112,17 @@ for message in st.session_state.messages:
 nv1 = tinySA.tinySA(getport())
 nv1.close() 
 
+response1 = ""
+response2 = ""
+num1 = 1e6
+num2 = 5e9
+num1e = num1
+num2e = num2
+args1 = []
+args2 = []
+
+
+
 if prompt := st.chat_input("Ask Ennoia:"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -152,9 +163,9 @@ if prompt := st.chat_input("Ask Ennoia:"):
     keywords = ["start","stop","center","span","rbw"]
     #matches = [word for word in keywords if word in prompt.lower()]
     matches = [word for word in prompt.split() if word.lower() in [k.lower() for k in keywords]]
-    if matches:
+    startf = extract_numbers(prompt)
+    if matches and startf:
         print(matches)
-        startf = extract_numbers(prompt)
         if startf:
                 #start = float(match.group())
             print(startf)
