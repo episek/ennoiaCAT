@@ -1,8 +1,0 @@
-typing
-fastapi 
-uvicorn 
-pydantic
-groq
-gunicorn
-matplotlib
-python-dotenv
