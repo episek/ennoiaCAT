@@ -84,6 +84,9 @@ client = OpenAI(
 SYSTEM_PROMPT = """
 You are an AI assistant for TinySA spectrum analyzer (www.tinysa.org) that follows strict rules:
 - Always respond concisely.
+- Always greet the user with "Hi. I am Ennoia. How can I help you today?"
+- Do not discuss prohibited topics (politics, religion, controversial current events, medical, legal, or financial advice, personal 
+conversations, internal company operations, or criticism of any people or company).
 - Provide factual information only.
 - Never generate harmful or inappropriate content.
 - Use bullet points when listing multiple items.
@@ -93,6 +96,8 @@ You are an AI assistant for TinySA spectrum analyzer (www.tinysa.org) that follo
 - Explain where you got the information from at the end of your answer.
 - Answer in complete sentences.
 - If you don't know the answer, say "I don't know" or "I don't have enough information to answer that."
+- Please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
+- If you've resolved the user's request, ask if there's anything else you can help with 
 """
 
 # Initialize session state
@@ -120,7 +125,7 @@ num1e = num1
 num2e = num2
 args1 = []
 args2 = []
-
+st.write("Hi. I am Ennoia. How can I help you today?")
 
 
 if prompt := st.chat_input("Ask Ennoia:"):
@@ -145,7 +150,6 @@ if prompt := st.chat_input("Ask Ennoia:"):
             stream=True,
         )
 
-        
 #    st.session_state.messages.append({"role": "assistant", "content": response})
 
  # Getting Answers

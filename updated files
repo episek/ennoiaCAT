@@ -1,0 +1,68 @@
+how to check the difference between 2 files
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# On branch main
+# Your branch is up to date with 'origin/main'.
+#
+# Changes to be committed:
+#	deleted:    OneDrive/startup/ennoiaAID/README.md
+#	deleted:    OneDrive/startup/ennoiaAID/ennoiaAID
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/.gitignore
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/README.md
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/components/LoadingSpinner.module.css
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/components/LoadingSpinner.tsx
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/components/SpectrumChart.tsx
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/components/SpectrumSummary.module.css
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/components/SpectrumSummary.tsx
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/components/ennoia.jpg
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/favicon.ico
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/globals.css
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/layout.tsx
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/page.module.css
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/page.tsx
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/services/spectrumApi.ts
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/app/types/spectrum.ts
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/eslint.config.mjs
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/next.config.ts
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/package-lock.json
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/package.json
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/public/file.svg
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/public/globe.svg
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/public/next.svg
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/public/vercel.svg
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/public/window.svg
+#	deleted:    OneDrive/startup/ennoiaAID/react-client/frequency-analysis/tsconfig.json
+#	deleted:    OneDrive/startup/ennoiaAID/src/.env.txt
+#	deleted:    OneDrive/startup/ennoiaAID/src/.gitignore
+#	deleted:    OneDrive/startup/ennoiaAID/src/Readme.md
+#	deleted:    OneDrive/startup/ennoiaAID/src/__pycache__/main.cpython-312.pyc
+#	deleted:    OneDrive/startup/ennoiaAID/src/__pycache__/main.cpython-313.pyc
+#	deleted:    OneDrive/startup/ennoiaAID/src/__pycache__/plot_data.cpython-312.pyc
+#	deleted:    OneDrive/startup/ennoiaAID/src/aggregate.py
+#	deleted:    OneDrive/startup/ennoiaAID/src/aggregated_signal_strength_plot.png
+#	deleted:    OneDrive/startup/ennoiaAID/src/api/__pycache__/agent.cpython-313.pyc
+#	deleted:    OneDrive/startup/ennoiaAID/src/api/agent.py
+#	deleted:    OneDrive/startup/ennoiaAID/src/ennoia.jpg
+#	deleted:    OneDrive/startup/ennoiaAID/src/genCSV.py
+#	deleted:    OneDrive/startup/ennoiaAID/src/highest_strength.py
+#	deleted:    OneDrive/startup/ennoiaAID/src/main.py
+#	deleted:    OneDrive/startup/ennoiaAID/src/max_signal_strengths.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_1.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_10.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_2.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_3.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_4.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_5.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_6.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_7.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_8.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/output_9.csv
+#	deleted:    OneDrive/startup/ennoiaAID/src/plot_data.py
+#	deleted:    OneDrive/startup/ennoiaAID/src/requirements.txt
+#	deleted:    OneDrive/startup/ennoiaAID/src/tinySA.py
+#	modified:   ennoiaCAT.py
+#
+# Untracked files:
+#	__pycache__/
+#
