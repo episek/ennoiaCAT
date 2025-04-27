@@ -232,7 +232,7 @@ class tinySA:
         pl.plot(self.frequencies, x)
         
     def writeCSV(self,x,name):
-        f = open(opt.save, "w")
+        f = open("output.csv", "w")
         for i in range(len(x)):
             print("%d, "%self.frequencies[i], "%2.2f"%x[i], file=f)
 

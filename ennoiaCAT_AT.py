@@ -95,7 +95,6 @@ conversations, internal company operations, or criticism of any people or compan
 - Use bullet points when listing multiple items.
 - Maintain a professional tone.
 - Always be proactive when you can, i.e. suggest next steps or offer to actually solve the problem. If need be, ask requisite follow up questions beforehand.
-- Offer to set the start frequency to the user and ask to input the value in Hz.
 - Explain where you got the information from at the end of your answer.
 - Answer in complete sentences.
 - If you don't know the answer, say "I don't know" or "I don't have enough information to answer that."
@@ -153,7 +152,8 @@ if prompt := st.chat_input("Ask Ennoia:"):
             stream=True,
         )
 
-
+        response = st.write_stream(stream)
+        
         # Define option descriptions for reference
         options_descriptions = {
         "plot": "plot rectangular",
@@ -171,7 +171,7 @@ if prompt := st.chat_input("Ask Ennoia:"):
 
         # Define default options dictionary
         opts = {
-            "plot": False,
+            "plot": True,
             "scan": False,
             "start": 1000000.0,
             "stop": 900000000.0,
@@ -225,7 +225,7 @@ if prompt := st.chat_input("Ask Ennoia:"):
         if isinstance(updated_opts, str) and updated_opts.strip():
             try:
                 dict = json.loads(updated_opts.strip())
-                
+                print("Dict loaded successfully")
             except json.JSONDecodeError as e:
                 print(f"Error: Invalid JSON format for dict. {e}")
                 print("Raw updated_opts:", updated_opts)
@@ -233,12 +233,20 @@ if prompt := st.chat_input("Ask Ennoia:"):
                 dict = opts
         else:
             dict = updated_opts
+            print("No valid JSON found, using default opts")
+            response = st.write_stream(stream)
             
         opt = SimpleNamespace(**dict)   
         print(f"opt = {opt}")
         
-        if opts == opt:
-            st.write(prompt)
+        #opts_json = json.dumps(opts)
+        #updated_opts_json = json.dumps(updated_opts, sort_keys=True, indent=4)
+
+        #if opts_json == json.loads(updated_opts):
+        #    response = st.writestream(stream)
+        #    print("Matched input")
+        #else:
+        #    print(f"Did not match input. {opts_json} vs {(updated_opts)}")
         
         nv = tinySA.tinySA(opt.device or getport())
 
@@ -289,5 +297,5 @@ if prompt := st.chat_input("Ask Ennoia:"):
             #pl.show()
         nv.close() 
 
-        
+
       
