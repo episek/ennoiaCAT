@@ -17,3 +17,5 @@ def load_vectorstore(persist_path="vectorstore"):
 def retrieve_relevant_documents(query, vectorstore, k=4):
     docs = vectorstore.similarity_search(query, k=k)
     return "\n\n".join([doc.page_content for doc in docs])
+
+

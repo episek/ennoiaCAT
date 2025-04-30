@@ -1,42 +1,21 @@
-from types import SimpleNamespace
-import streamlit as st
-import re
-import subprocess
-import matplotlib
 #matplotlib.use('Qt5Agg')
-import matplotlib.pyplot as plt
-import numpy as np
-import pylab as pl
-import serial
-import struct
-from serial.tools import list_ports
 import tinySA
-from optparse import OptionParser
 import os
-import time
 import json
-import difflib
 import os
-
+import torch
+import threading
+import streamlit as st
+import matplotlib.pyplot as plt
+from serial.tools import list_ports
+from types import SimpleNamespace
 from dotenv import load_dotenv
 from scraper import scrape_website
 from embedder import create_vectorstore_from_text
-from retriever import load_vectorstore, retrieve_relevant_documents
-
+from retriever import load_vectorstore
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-from transformers import BitsAndBytesConfig
-from accelerate.utils import infer_auto_device_map, get_balanced_memory
-
-import torch
-import threading
 from transformers import TextIteratorStreamer
 
-import torch
-import threading
-from transformers import TextIteratorStreamer
-
-import threading
-from transformers import TextIteratorStreamer
 
 def query_local_llm_stream_with_context(user_input, model, tokenizer, system_prompt, max_new_tokens=200, temperature=0.7):
     # Ensure the context is only appended once
@@ -82,6 +61,7 @@ def query_local_llm_stream_with_context(user_input, model, tokenizer, system_pro
         response += token_clean + " "  # Add space between tokens for readability
         yield token_clean + " "  # Stream token with spacing
 
+    print(f"Final response: {response}")  # Debugging output
     return response.strip()  # Return the cleaned final response
 
 
@@ -148,16 +128,48 @@ def query_local_llm(prompt, pipe):
 
 
 @st.cache_resource
-def load_model():
-    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+def load_model(device):
+    model_name = "microsoft/phi-2"
+    compute_dtype = torch.float16 if device == "cuda" else torch.float32
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token  # Set pad token to avoid errors
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        device_map="auto",
+        device_map="auto",     
         offload_folder="offload_dir" if device == "cpu" else None,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32
+        torch_dtype=compute_dtype  
     )
     return tokenizer, model
+
+
+# def load_model():
+#      # model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+#     model_name = "microsoft/phi-2"
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+#     compute_dtype = torch.float16 if device == "cuda" else torch.float32
+
+#     bnb_config = BitsAndBytesConfig(
+#         load_in_4bit=True,
+#         bnb_4bit_quant_type="nf4",
+#         bnb_4bit_use_double_quant=True,
+#         bnb_4bit_compute_dtype=compute_dtype,
+#     )
+
+#     tokenizer = AutoTokenizer.from_pretrained(model_name)
+#     tokenizer.pad_token = tokenizer.eos_token  # Ensure a padding token is set
+
+#     model = AutoModelForCausalLM.from_pretrained(
+#         model_name,
+#         device_map="auto",
+#         quantization_config=bnb_config,
+#         offload_folder="offload_dir" if device == "cpu" else None,
+#         torch_dtype=compute_dtype,
+#         llm_int8_enable_fp32_cpu_offload=True  # ✅ Allow safe CPU offload
+#     )
+
+#     return tokenizer, model
+
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = "" # Set to empty string to disable GPU
 VID = 0x0483 #1155
@@ -219,24 +231,7 @@ st.write(f"Device set to use {device}")
 
 # Load model to the correct device
 
-tokenizer, model = load_model()
-
-
-# """ bnb_config = BitsAndBytesConfig(
-#     load_in_4bit=True,        # Enable 4-bit quantization
-#     bnb_4bit_compute_dtype=torch.float16,  # Half-precision computation
-#     bnb_4bit_use_double_quant=True,        # Further compression
-#      llm_int8_enable_fp32_cpu_offload=True # 🔥 Important: allow CPU/GPU split with FP32 CPU offload
-# )
-
-# model = AutoModelForCausalLM.from_pretrained(
-#     model_name,
-#     quantization_config=bnb_config,
-#     torch_dtype=torch.float16,  # Use float16 for model weights
-#     device_map="auto", # Automatically split layers across GPU/CPU
-#     trust_remote_code=True
-# )
-#  """
+tokenizer, model = load_model(device)
 print(model.device)  # Make sure it's on the correct device (CUDA/CPU)
 
 
