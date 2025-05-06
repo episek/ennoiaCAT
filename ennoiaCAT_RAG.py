@@ -30,22 +30,33 @@ st.markdown(
     """
 )
 
-# STEP 4: Load Local Model
-st.write("\n⏳ Working in OFFLINE mode. Loading local model... (might take a minute)")
+
+# --- App logic starts here ---
+selected_options = TinySAHelper.select_checkboxes()
+st.success(f"You selected: {', '.join(selected_options) if selected_options else 'nothing'}")
+
+
 # --- Caching the model and tokenizer ---
-@st.cache_resource
-def load_model_and_tokenizer():
-    return TinySAHelper.load_lora_model()
 
-tokenizer, peft_model, device = load_model_and_tokenizer()
+if "SLM" in selected_options:
+    @st.cache_resource
+    def load_model_and_tokenizer():
+        return TinySAHelper.load_lora_model()
 
-st.write(f"Device set to use {device}")
+    st.write("\n⏳ Working in OFFLINE mode. Loading local model... (might take a minute)")
+    tokenizer, peft_model, device = load_model_and_tokenizer()
+    st.write(f"Device set to use {device}")
+    map_api = MapAPI(peft_model, tokenizer)
+else:
+    st.write("\n⏳ Working in ONLINE mode.")  
+    client, ai_model = TinySAHelper.load_OpenAI_model()
+    map_api = MapAPI() 
 
 helper = TinySAHelper()
 system_prompt = helper.get_system_prompt()
 few_shot_examples = helper.get_few_shot_examples()
 
-map_api = MapAPI(peft_model, tokenizer)
+
 
 @st.cache_data
 def get_default_options():
@@ -55,21 +66,17 @@ def_dict = get_default_options()
 
 few_shot_examples2 = map_api.get_few_shot_examples()
 
-
-#os.environ["STREAMLIT_WATCH_FILES"] = "false"
-
 # --- Get and cache the TinySA port ---
 if "tinySA_port" not in st.session_state:
     st.session_state.tinySA_port = helper.getport()
 
-
-st.write(f"\n✅ Local model {peft_model.config.name_or_path} loaded! Let's get to work.\n")
-
-
+if "SLM" in selected_options:
+    st.write(f"\n✅ Local SLM model {peft_model.config.name_or_path} loaded & device found! Let's get to work.\n")
+else:
+    if "openai_model" not in st.session_state:
+        st.session_state["openai_model"] = ai_model
+    st.write(f"\n✅ Online LLM model {ai_model} loaded & device! Let's get to work.\n")
 # Initialize TinySA device
-
-st.write(f"Found TinySA device on: {st.session_state.tinySA_port}")
-st.write("Continuing with the device...")
 
 st.write("Hi. I am Ennoia, your AI assistant. How can I help you today?")
 
@@ -82,8 +89,6 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-
-
 
 prompt = st.chat_input("Ask Ennoia:")
 
@@ -99,8 +104,18 @@ if prompt:
         user_input = st.session_state.messages[-1]["content"]
         
         chat1 = [{"role": "system", "content": system_prompt}] + few_shot_examples + [{"role": "user", "content": user_input}]
-        response = map_api.generate_response(chat1)
-
+        if "SLM" in selected_options:
+            response = map_api.generate_response(chat1)
+        else:
+            openAImessage = client.chat.completions.create(
+                model=st.session_state["openai_model"],
+                messages=chat1,
+                temperature=0,
+                max_tokens=200,
+                frequency_penalty=1,
+                stream=False
+            )
+            response = openAImessage.choices[0].message.content
         # Display the streamed response from the assistant
         st.markdown(response)
         
@@ -110,8 +125,20 @@ if prompt:
 
     system_prompt2 = map_api.get_system_prompt(def_dict,user_input)
     chat2 = [{"role": "system", "content": system_prompt2}] + few_shot_examples2 + [{"role": "user", "content": user_input}]
-    api_str = map_api.generate_response(chat2)
-        # Parse response safely into a dictionary
+    if "SLM" in selected_options:
+        api_str = map_api.generate_response(chat2)
+    else:
+        openAImessage = client.chat.completions.create(
+                model=st.session_state["openai_model"],
+                messages=chat2,
+                temperature=0,
+                max_tokens=200,
+                frequency_penalty=1,
+                stream=False
+            )
+        api_str = openAImessage.choices[0].message.content
+    #st.markdown(api_str)
+    # Parse response safely into a dictionary
     api_dict = def_dict
     try:
         parsed = json.loads(api_str)

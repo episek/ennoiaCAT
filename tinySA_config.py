@@ -8,6 +8,8 @@ from peft import PeftModel
 from serial.tools import list_ports
 import tinySA
 import matplotlib.pyplot as plt
+import time
+import streamlit as st
 
 class TinySAHelper:
     def __init__(self, model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0"):
@@ -96,7 +98,33 @@ class TinySAHelper:
         ]
         return few_shot_examples      
         
+    def select_checkboxes():
+        st.markdown("### Select your model type")
 
+        # Initialize state
+        if "submitted" not in st.session_state:
+            st.session_state.submitted = False
+
+        if not st.session_state.submitted:
+            # Show checkboxes
+            option1 = st.checkbox("Online LLM", key="opt_a")
+            option2 = st.checkbox("Local SLM", key="opt_b")
+
+            # Submit button
+            if st.button("Submit"):
+                st.session_state.submitted = True
+                st.session_state.selected = []
+                if st.session_state.opt_a:
+                    st.session_state.selected.append("LLM")
+                if st.session_state.opt_b:
+                    st.session_state.selected.append("SLM")
+                st.rerun()
+
+            # Return early: don't continue until submitted
+            st.stop()
+
+        # After submission
+        return st.session_state.selected
 
     def load_lora_model(base_model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", lora_path="./tinyllama_tinysa_lora"):
         """
@@ -213,14 +241,44 @@ class TinySAHelper:
 
         return tokenizer, peft_model, base_model
 
+    def load_OpenAI_model():
+
+        from openai import OpenAI
+        from openai_api_key_verifier import verify_api_key, check_model_access, list_models, get_account_usage  
+        # Replace with your actual API key
+        api_key = os.getenv("OPENAI_API_KEY")
+        # Verify if the API key is valid
+        is_valid = verify_api_key(api_key)
+        ai_model = "gpt-4o-mini"
+        if is_valid and check_model_access(api_key, ai_model):
+            st.success("API key to OpenAI is valid!")
+        else:
+            st.error("API key is invalid. Please check the connection to Open AI")
+
+        client = OpenAI(api_key= os.getenv("OPENAI_API_KEY"))
+        
+        return client, ai_model
+
     def getport(self):
         VID = 0x0483
         PID = 0x5740
-        device_list = list_ports.comports()
-        for deviceV in device_list:
-            if deviceV.vid == VID and deviceV.pid == PID:
-                return deviceV.device
-        raise OSError("TinySA device not found")
+        timeout_seconds = 60
+        start_time = time.time()
+
+        while True:
+            device_list = list_ports.comports()
+            for deviceV in device_list:
+                if deviceV.vid == VID and deviceV.pid == PID:
+                    st.success(f"Device found: {deviceV.device}")
+                    return deviceV.device
+
+            if time.time() - start_time > timeout_seconds:
+                raise OSError("TinySA device not found after waiting 60 seconds")
+
+            st.write("Waiting for TinySA device to be connected...")
+            time.sleep(10)
+
+
 
     def configure_tinySA(self, opt):
         nv = tinySA.tinySA(opt.device or self.getport())

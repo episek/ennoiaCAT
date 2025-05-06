@@ -5,7 +5,7 @@ from transformers import pipeline
 
 
 class MapAPI:
-    def __init__(self, model, tokenizer, max_new_tokens=512, temperature=0.7, do_sample=True):
+    def __init__(self, model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", tokenizer={}, max_new_tokens=512, temperature=0.7, do_sample=True):
         """
         Initializes the MapAPI class and creates a text generation pipeline.
 
@@ -16,17 +16,18 @@ class MapAPI:
             temperature (float): Sampling temperature.
             do_sample (bool): Whether to sample or use greedy decoding.
         """
-        self.pipe = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=do_sample
-        )
-        self.model = model
-        self.tokenizer = tokenizer
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if tokenizer:
+            self.pipe = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=do_sample
+            )
+            self.model = model
+            self.tokenizer = tokenizer
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def get_system_prompt(self, original_dict, user_input):
 
