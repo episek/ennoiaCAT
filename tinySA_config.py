@@ -10,6 +10,9 @@ import tinySA
 import matplotlib.pyplot as plt
 import time
 import streamlit as st
+import csv
+import numpy as np
+from scipy.signal import find_peaks
 
 class TinySAHelper:
     def __init__(self, model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0"):
@@ -321,3 +324,169 @@ class TinySAHelper:
             gcf = plt.gcf()
         nv.close()
         return gcf
+    
+    
+    def find_max_signal_strength_to_csv(self,file_list, output_filename="max_signal_strengths.csv", min_strength=-80):
+        max_strengths = {}
+        
+        for filename in file_list:
+            try:
+                with open(filename, 'r') as file:
+                    for line in file:
+                        if not line.strip():
+                            continue
+                        
+                        try:
+                            freq, strength = map(float, line.split(','))
+                            freq = int(freq)
+                            # Only consider strengths >= min_strength
+                            if strength >= min_strength:
+                                if freq not in max_strengths or strength > max_strengths[freq]:
+                                    max_strengths[freq] = strength
+                                
+                        except ValueError:
+                            print(f"Skipping invalid line in {filename}: {line.strip()}")
+                            continue
+                        
+            except FileNotFoundError:
+                print(f"Could not find file: {filename}")
+                continue
+            except Exception as e:
+                print(f"Error processing {filename}: {str(e)}")
+                continue
+        
+        # Sort and save to CSV
+        sorted_results = sorted(max_strengths.items())
+        
+        with open(output_filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Frequency', 'Signal_Strength'])  # Header
+            writer.writerows(sorted_results)
+        
+        return dict(sorted_results)
+    
+
+    def read_signal_strength(self,filename):
+        frequencies = []
+        strengths = []
+        filelist = ["output.csv"]
+
+        # Generate CSVs from external scripts
+        self.find_max_signal_strength_to_csv(filelist, output_filename="max_signal_strengths.csv", min_strength=-80)
+
+        try:
+            with open(filename, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    freq = int(float(row['Frequency']))
+                    strength = float(row['Signal_Strength'])
+                    frequencies.append(freq)
+                    strengths.append(strength)
+        except FileNotFoundError:
+            print(f"File not found: {filename}")
+            return None
+        except Exception as e:
+            print(f"Error reading {filename}: {str(e)}")
+            return None
+
+        return strengths, frequencies
+
+
+    def get_operator_frequencies(self):
+        file_path = 'operator_table.json'
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r') as file:
+                    data = json.load(file)
+                print(f"Loaded JSON from {file_path}")
+                return data
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                return {}
+        else:
+            print(f"File not found: {file_path}")
+            return {}
+
+
+    def analyze_signal_peaks(self,sstr, freq_mhz, operator_table, window_size=5, peak_height=-75, peak_distance=10):
+        """
+        Analyze signal peaks, group them by 3GPP band, and reduce the number of peaks.
+
+        Parameters:
+        - sstr: List or array of signal strengths.
+        - freq_mhz: List or array of frequencies (in MHz) corresponding to `sstr`.
+        - operator_table: List of dictionaries containing operator band info.
+        - window_size: Number of samples before and after peak to average.
+        - peak_height: Minimum signal strength (in dBm) to consider a peak.
+        - peak_distance: Minimum distance (in MHz) between peaks to consider them as distinct.
+
+        Returns:
+        - List of dictionaries with band match information.
+        """
+        peaks, _ = find_peaks(sstr, height=peak_height)
+        grouped_peaks = []
+
+        for peak in peaks:
+            freq = freq_mhz[peak]
+            closest_band = None
+            min_diff = float('inf')
+
+            # Find the closest operator band to the peak frequency
+            for band in operator_table:
+                try:
+                    uplink = [int(x.strip()) for x in band['Uplink Frequency (MHz)'].split(' - ')]
+                    downlink = [int(x.strip()) for x in band['Downlink Frequency (MHz)'].split(' - ')]
+                except Exception:
+                    continue  # Skip malformed entries
+
+                if uplink[0] <= freq <= uplink[1] or downlink[0] <= freq <= downlink[1]:
+                    diff = min(
+                        abs(uplink[0] - freq), abs(uplink[1] - freq),
+                        abs(downlink[0] - freq), abs(downlink[1] - freq)
+                    )
+                    if diff < min_diff:
+                        min_diff = diff
+                        closest_band = band
+
+            if closest_band:
+                # Group peaks by band and distance
+                found_group = False
+                for group in grouped_peaks:
+                    # Check if the peak is within the distance of an existing group
+                    if abs(group['frequency'] - freq) <= peak_distance:
+                        group['peaks'].append(peak)
+                        found_group = True
+                        break
+
+                if not found_group:
+                    # Create a new group for this peak
+                    grouped_peaks.append({
+                        'band': closest_band,
+                        'frequency': freq,
+                        'peaks': [peak]
+                    })
+
+        # Process the grouped peaks and compute their average strength
+        result = []
+        for group in grouped_peaks:
+            band = group['band']
+            all_peaks = group['peaks']
+            # Get the average signal strength for all peaks in this group
+            avg_strength = round(float(np.mean([sstr[peak] for peak in all_peaks])), 2)
+
+            # Use the first and last peak's frequencies to define the frequency range
+            start_idx = max(all_peaks[0] - window_size, 0)
+            end_idx = min(all_peaks[-1] + window_size, len(sstr))
+            freq_range = f"{int(freq_mhz[start_idx])} - {int(freq_mhz[end_idx - 1])}"
+
+            result.append({
+                "operator": band.get('Operators', 'Unknown'),
+                "strength": avg_strength,
+                "technology": band.get('Technology', 'Unknown'),
+                "service": "Mobile",
+                "frequency_range": freq_range,
+                "band_3GPP": band.get('3GPP Band', 'Unknown'),
+                "source": "Internal Database"
+            })
+
+        return result

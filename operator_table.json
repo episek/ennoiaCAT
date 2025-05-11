@@ -1,0 +1,137 @@
+[
+  {
+    "Band ":"600 MHz",
+    "3GPP Band":"Band 71",
+    "Uplink Frequency (MHz)":"663 - 698",
+    "Downlink Frequency (MHz)":"617 - 652",
+    "Bandwidth":"35 MHz",
+    "Technology":"LTE, 5G NR",
+    "Operators":"T-Mobile"
+  },
+  {
+    "Band ":"700 MHz",
+    "3GPP Band":"Band 12",
+    "Uplink Frequency (MHz)":"699 - 716",
+    "Downlink Frequency (MHz)":"729 - 746",
+    "Bandwidth":"10 MHz",
+    "Technology":"LTE",
+    "Operators":"T-Mobile"
+  },
+  {
+    "Band ":"700 MHz",
+    "3GPP Band":"Band 13",
+    "Uplink Frequency (MHz)":"777 - 787",
+    "Downlink Frequency (MHz)":"746 - 756",
+    "Bandwidth":"10 MHz",
+    "Technology":"LTE",
+    "Operators":"Verizon"
+  },
+  {
+    "Band ":"700 MHz",
+    "3GPP Band":"Band 14",
+    "Uplink Frequency (MHz)":"788 - 798",
+    "Downlink Frequency (MHz)":"758 - 768",
+    "Bandwidth":"10 MHz",
+    "Technology":"LTE",
+    "Operators":"AT&T (FirstNet)"
+  },
+  {
+    "Band ":"700 MHz",
+    "3GPP Band":"Band 17",
+    "Uplink Frequency (MHz)":"704 - 716",
+    "Downlink Frequency (MHz)":"734 - 746",
+    "Bandwidth":"10 MHz",
+    "Technology":"LTE",
+    "Operators":"AT&T"
+  },
+  {
+    "Band ":"700 MHz",
+    "3GPP Band":"Band 29",
+    "Uplink Frequency (MHz)":"N\/A",
+    "Downlink Frequency (MHz)":"717 - 728",
+    "Bandwidth":"10 MHz",
+    "Technology":"LTE",
+    "Operators":"AT&T (Supplemental Downlink)"
+  },
+  {
+    "Band ":"850 MHz",
+    "3GPP Band":"Band 5",
+    "Uplink Frequency (MHz)":"824 - 849",
+    "Downlink Frequency (MHz)":"869 - 894",
+    "Bandwidth":"25 MHz",
+    "Technology":"LTE",
+    "Operators":"AT&T, Verizon"
+  },
+  {
+    "Band ":"850 MHz",
+    "3GPP Band":"Band 26",
+    "Uplink Frequency (MHz)":"814 - 849",
+    "Downlink Frequency (MHz)":"859 - 894",
+    "Bandwidth":"25 MHz",
+    "Technology":"LTE",
+    "Operators":"Sprint (now T-Mobile)"
+  },
+  {
+    "Band ":"1700\/2100 MHz",
+    "3GPP Band":"Band 4",
+    "Uplink Frequency (MHz)":"1710 - 1755",
+    "Downlink Frequency (MHz)":"2110 - 2155",
+    "Bandwidth":"45 MHz",
+    "Technology":"LTE",
+    "Operators":"AT&T, T-Mobile, Verizon"
+  },
+  {
+    "Band ":"1700\/2100 MHz",
+    "3GPP Band":"Band 66",
+    "Uplink Frequency (MHz)":"1710 - 1780",
+    "Downlink Frequency (MHz)":"2110 - 2200",
+    "Bandwidth":"70 MHz",
+    "Technology":"LTE, 5G NR",
+    "Operators":"AT&T, T-Mobile, Verizon"
+  },
+  {
+    "Band ":"1900 MHz",
+    "3GPP Band":"Band 2",
+    "Uplink Frequency (MHz)":"1850 - 1910",
+    "Downlink Frequency (MHz)":"1930 - 1990",
+    "Bandwidth":"60 MHz",
+    "Technology":"LTE",
+    "Operators":"AT&T, T-Mobile, Verizon"
+  },
+  {
+    "Band ":"1900 MHz",
+    "3GPP Band":"Band 25",
+    "Uplink Frequency (MHz)":"1850 - 1915",
+    "Downlink Frequency (MHz)":"1930 - 1995",
+    "Bandwidth":"60 MHz",
+    "Technology":"LTE",
+    "Operators":"Sprint (now T-Mobile)"
+  },
+  {
+    "Band ":"2500 MHz",
+    "3GPP Band":"Band 41",
+    "Uplink Frequency (MHz)":"2496 - 2690",
+    "Downlink Frequency (MHz)":"2496 - 2690",
+    "Bandwidth":"194 MHz",
+    "Technology":"LTE, 5G NR",
+    "Operators":"T-Mobile (formerly Sprint)"
+  },
+  {
+    "Band ":"3.5 GHz (CBRS)",
+    "3GPP Band":"Band 48",
+    "Uplink Frequency (MHz)":"3550 - 3700",
+    "Downlink Frequency (MHz)":"3550 - 3700",
+    "Bandwidth":"150 MHz",
+    "Technology":"LTE, 5G NR",
+    "Operators":"Verizon, AT&T, T-Mobile"
+  },
+  {
+    "Band ":"3.7 GHz (C-band)",
+    "3GPP Band":"Band 77",
+    "Uplink Frequency (MHz)":"3700 - 3980",
+    "Downlink Frequency (MHz)":"3700 - 3980",
+    "Bandwidth":"280 MHz",
+    "Technology":"5G NR",
+    "Operators":"Verizon, AT&T, T-Mobile"
+  }
+]
