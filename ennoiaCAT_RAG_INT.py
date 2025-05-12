@@ -141,17 +141,20 @@ if prompt:
         api_str = openAImessage.choices[0].message.content
     #st.markdown(api_str)
     # Parse response safely into a dictionary
-    def_dict["save"] = "output.csv"
+    def_dict["save"] = True
+    print(f"\nSave output response:\n{def_dict}")
     api_dict = def_dict
     try:
         parsed = json.loads(api_str)
         if isinstance(parsed, dict):
             api_dict = parsed
+            api_dict["save"] = True
     except json.JSONDecodeError:
         try:
             parsed = ast.literal_eval(api_str)
             if isinstance(parsed, dict):
                 api_dict = parsed
+                api_dict["save"] = True
         except Exception:
             print("Warning: Failed to parse response as a valid dictionary. Using default options.")
 
@@ -173,7 +176,9 @@ if prompt:
 
         sstr, freq = result
         freq_mhz = [x / 1e6 for x in freq]
-
+        print(f"\nSignal strengths: {sstr}")
+        print(f"\nFrequencies: {freq_mhz}")
+        
         operator_table = helper.get_operator_frequencies()
         if not operator_table:
             st.error("Operator table could not be loaded.")
