@@ -9,3 +9,5 @@ transformers
 langchain_huggingface
 bitsandbytes
 accelerate
+datasets 
+peft
