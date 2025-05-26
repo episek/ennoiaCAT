@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 langchain
 langchain-community
 faiss-cpu
@@ -11,3 +12,30 @@ bitsandbytes
 accelerate
 datasets 
 peft
+=======
+openai
+openai_api_key_verifier
+streamlit
+numpy
+serial
+tinySA
+matplotlib
+pyserial
+json
+ast
+RS_config
+map_api
+types
+pandas
+struct
+csv
+RsInstrument
+time
+deep_translator
+socket
+subprocess
+os
+zipfile
+re
+Keysight
+>>>>>>> b5cc0200b4bffdd955f375d7a47485614330b672
