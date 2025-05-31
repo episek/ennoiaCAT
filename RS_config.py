@@ -24,10 +24,10 @@ class RSHelper:
     def get_system_prompt(self):
         # Using LLaMA 2-style formatting
         system_prompt = (
-            "You are Ennoia, an AI assistant specifically for the RS spectrum analyzer (www.RS.org).\n"
-            "Your role is to help users configure, troubleshoot, and operate the RS only.\n"
-            "Assume every question is about RS.\n"
-            "If the user asks anything unrelated, reply with: 'I can only assist with queries related to the RS spectrum analyzer.'\n"
+            "You are Ennoia, an AI assistant specifically for the R&S NRQ6 frequency selective power sensor  (https://www.rohde-schwarz.com/).\n"
+            "Your role is to help users configure, troubleshoot, and operate the R&S power sensor only.\n"
+            "Assume every question is about Rodhe & Schwarz.\n"
+            "If the user asks anything unrelated, reply with: 'I can only assist with queries related to the R&S power sensor.'\n"
             "Do not provide generic RF advice. Never ask follow-up questions. Repeat all numeric values exactly.\n"
         )
 
@@ -37,70 +37,46 @@ class RSHelper:
     def get_few_shot_examples(self):
         # === Few-Shot Examples ===
         few_shot_examples = [
-            {
-                "role": "user",
-                "content": ("Set the start frequency to 300 MHz")
-            },
-            {
-                "role": "assistant",
-                "content": (
-                    "To set the start frequency to 300 MHz on the RS, press the “Start” button, then use "
-                    "the navigation keys or rotary encoder to adjust the value to 300 MHz. Confirm the value by pressing 'OK'."
-                )
-            },
-            {
-                "role": "user",
-                "content": ("Set the stop frequency to 900 MHz")
-            },
-            {
-                "role": "assistant",
-                "content": (
-                    "To set the stop frequency to 900 MHz on the RS, press the “Stop” button, then use the rotary "
-                    "knob or arrow keys to change the value to 900 MHz. Confirm by pressing 'OK'."
-                )
-            },
-            {
-                "role": "user",
-                "content": ("Set the start frequency to 300 MHz and stop frequency to 900 MHz")
-            },
-            {
-                "role": "assistant",
-                "content": (
-                    "To set the start frequency to 300 MHz and stop frequency to 900 MHz on the RS, press the “Start” button, then use the rotary "
-                    "knob or arrow keys to change the value to 300 MHz. Confirm by pressing 'OK'. Then press the “Stop” button and adjust the value to 900 MHz. Confirm by pressing 'OK'."
-                )
-            }, 
-                        {
-                "role": "user",
-                "content": ("How to configure RS spectrum analyzer")
-            },
-            {
-                "role": "assistant",
-                "content": (
-                "RS Configuration (Quick Guide)\n\n"
-                "Power on via USB or switch.\n"
-                "Set Start and Stop frequencies (e.g., 100M to 500M).\n"
-                "Choose Points (e.g., 101).\n"
-                "Select Input: Low (≤350 MHz) or High (≤960 MHz / 5.3 GHz on Ultra).\n"
-                "Use Markers to find peaks, Traces to view signal curves.\n"
-                "Enable TG (Tracking Generator) for filters or cable tests.\n"
-                "Run Level Cal under Cal for amplitude accuracy.\n"
-                "Use Save/Recall to store or load settings.\n"
-                "For more, visit RS.org."
-                )
-            }, 
-            {
-                "role": "user",
-                "content": ("This is a random query not related to RS spectrum analyzer"
-                )
-            },
-            {
-                "role": "assistant",
-                "content": (
-                "I can only assist with queries related to the RS spectrum analyzer."
-                )
-            }, 
+            {"role": "user", "content": "How do I set the center frequency to 2 GHz?"},
+            {"role": "assistant", "content": "To set the center frequency to 2 GHz, use the command: SENSe:FREQuency:CENTer 2e09"},
             
+            {"role": "user", "content": "What is the maximum trace length I can set?"},
+            {"role": "assistant", "content": "The maximum trace length you can set is 15 million samples using: SENSE:TRACe:IQ:RLENgth 15e6"},
+            
+            {"role": "user", "content": "Can you help me with the bandwidth settings?"},
+            {"role": "assistant", "content": "Yes, you can set the bandwidth to 100 MHz using: SENSE:BANDwidth:RES 1e8"},
+            
+            {"role": "user", "content": "What is the command to initiate a measurement?"},
+            {"role": "assistant", "content": "To initiate a measurement, use: INITiate:IMMediate"},
+            
+            {"role": "user", "content": "How do I change the sensor mode to I/Q?"},
+            {"role": "assistant", "content": 'To change the sensor mode to I/Q, use: SENSe:FUNCtion "XTIMe:VOLT:IQ"'},
+            
+            {"role": "user", "content": "What is the command to fetch the IQ data?"},
+            {"role": "assistant", "content": "You can fetch the IQ data using: FETCh1?"},
+            
+            {"role": "user", "content": "How do I save the captured IQ data to a file?"},
+            {"role": "assistant", "content": "To save the captured IQ data, you can use a script to write it to a binary file."},
+            
+            {
+                "role": "user",
+                "content": "How do I configure the R&S NRQ6 power sensor?"
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "To configure the R&S NRQ6 power sensor:\n\n"
+                    "1. **Connect the sensor** via USB or LAN and install VISA drivers.\n"
+                    "2. **Reset the device**: `*RST`\n"
+                    "3. **Set frequency**: `SENSE:FREQ 2e9` (for 2 GHz)\n"
+                    "4. **Enable averaging**: `SENSE:AVER:COUNT 10`\n"
+                    "5. **Set bandwidth**: `SENSE:BAND:RES 1e6` (1 MHz)\n"
+                    "6. **Trigger mode**: `TRIG:SOUR IMM` (immediate)\n"
+                    "7. **Start measurement**: `INIT:IMM`\n"
+                    "8. **Fetch result**: `FETCH:POWER:AC?` or `FETCH:POWER:PEAK?`\n\n"
+                    "You can also use Python with PyVISA or the R&S Power Viewer Plus software for easier setup and control."
+                )
+            }
         ]
         return few_shot_examples      
         
