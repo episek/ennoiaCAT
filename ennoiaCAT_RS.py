@@ -92,14 +92,7 @@ resource = 'TCPIP::nrq6-101528::hislip0'
 #resource = "TCPIP0::nrq6-101528::inst0::INSTR"
 
 
-# Define the device handle
-#nrq = RsInstrument(resource, True, True, options="SelectVisa='rs'")
-try:
-    nrq = RsInstrument(resource, id_query=True, reset=True)
-    print(nrq.query('*IDN?'))
-    print(nrq.query("*OPT?"))
-except Exception as e:
-    print(f"Failed to connect: {e}")
+
 
 #inst = NRQ(resource)
 
@@ -121,6 +114,15 @@ st.title("Rohde & Schwarz GmbH")
     # }}
     # </style>
 # """, unsafe_allow_html=True)
+
+# Define the device handle
+#nrq = RsInstrument(resource, True, True, options="SelectVisa='rs'")
+try:
+    nrq = RsInstrument(resource, id_query=True, reset=True)
+    print(nrq.query('*IDN?'))
+    print(nrq.query("*OPT?"))
+except Exception as e:
+    st.error(f"Failed to connect: {e}")
 
 # 🔽 Dropdown with full names
 selected_language = st.selectbox("🌐 Select your language", list(language_map.keys()), index=0)
@@ -323,21 +325,21 @@ if lang:
         #uploaded_file = st.file_uploader("Upload I/Q CSV File", type="csv")
         #sample_rate = st.number_input("Sample Rate (Hz)", value=122_880_000, step=1_000_000)
         
-        uploaded_file = "iq_capture.csv"  # Change to your file location
-        sample_rate = 122880000
+        #uploaded_file = "iq_capture.csv"  # Change to your file location
+        #sample_rate = 122880000
 
-        if uploaded_file and os.path.exists(uploaded_file):
-            iq = load_iq_csv(uploaded_file)
-            st.subheader("🕒 Time-Domain Plot")
-            st.pyplot(plot_time_domain(iq))
+        #if uploaded_file and os.path.exists(uploaded_file):
+        #    iq = load_iq_csv(uploaded_file)
+        #    st.subheader("🕒 Time-Domain Plot")
+        #    st.pyplot(plot_time_domain(iq))
 
-            st.subheader("🔊 Frequency-Domain Plot (FFT)")
-            translated, plotout = plot_fft(iq, sample_rate)
-            st.write(translated)
-            # Display the FFT plot
-            st.pyplot(plotout)
-        else:
-            st.info("Please upload a CSV file with 'I' and 'Q' columns.")
+        #    st.subheader("🔊 Frequency-Domain Plot (FFT)")
+        #    translated, plotout = plot_fft(iq, sample_rate)
+        #    st.write(translated)
+        #    # Display the FFT plot
+        #    st.pyplot(plotout)
+        #else:
+        #    st.info("Please upload a CSV file with 'I' and 'Q' columns.")
 
         # Close the instrument connection
         close(nrq)

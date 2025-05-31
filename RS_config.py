@@ -26,7 +26,7 @@ class RSHelper:
         system_prompt = (
             "You are Ennoia, an AI assistant specifically for the R&S NRQ6 frequency selective power sensor  (https://www.rohde-schwarz.com/).\n"
             "Your role is to help users configure, troubleshoot, and operate the R&S power sensor only.\n"
-            "Assume every question is about Rodhe & Schwarz.\n"
+            "Assume every question is about Rohde & Schwarz.\n"
             "If the user asks anything unrelated, reply with: 'I can only assist with queries related to the R&S power sensor.'\n"
             "Do not provide generic RF advice. Never ask follow-up questions. Repeat all numeric values exactly.\n"
         )
@@ -291,7 +291,7 @@ class RSHelper:
                 writer.writerow(['I', 'Q'])
                 writer.writerows(iq_pairs)
 
-            print(f"[✅] Saved CSV: {csv_file}")
+            st.write(f"[✅] Saved CSV: {csv_file}")
             return(iq_pairs)
             
         def load_iq_csv(uploaded_file):
@@ -311,19 +311,19 @@ class RSHelper:
             ax[1].grid(True)
             return fig
 
-        def plot_fft(iq, sample_rate):
+        def plot_fft(iq, sample_rate, centerFreq=0):
             N = len(iq)
             fft_data = np.fft.fftshift(np.fft.fft(iq))
             freqs = np.fft.fftshift(np.fft.fftfreq(N, d=1/sample_rate))
             magnitude_db = 20 * np.log10(np.abs(fft_data) + 1e-12)
             magnitude_db[N // 2] = magnitude_db[N // 2]-60
             
-            # text = f"Detected high DC component of > 60dB above noise floor. Suppressed the DC Component"
-            # translated = GoogleTranslator(source='auto', target=lang).translate(text)
-            # st.write(translated)        
+            #text = f"Detected high DC component of > 60dB above noise floor. Suppressed the DC Component"
+            #translated = GoogleTranslator(source='auto', target=lang).translate(text)
+            #st.write(translated)        
 
             fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(freqs / 1e6, magnitude_db)
+            ax.plot((freqs +centerFreq) / 1e6, magnitude_db)
             ax.set_xlabel('Frequency (MHz)')
             ax.set_ylabel('Magnitude (dB)')
             ax.set_title('FFT Spectrum')
@@ -365,16 +365,14 @@ class RSHelper:
             nv.write('')
             nv.write('FORM:DATA REAL,64')
 
-            nv.write('INITiate:IMMediate')  # Initiates a single trigger measurement
-            nv.visa_timeout = 10000  # Extend Visa timeout to avoid errors
-            output = nv.query_bin_or_ascii_float_list('FETCh1?')  # Get the measurement in binary format
-            nv.visa_timeout = 3000  # Change back timeout to standard value
+           # nv.write('INITiate:IMMediate')  # Initiates a single trigger measurement
+           # nv.visa_timeout = 10000  # Extend Visa timeout to avoid errors
+           # output = nv.query_bin_or_ascii_float_list('FETCh1?')  # Get the measurement in binary format
+           # nv.visa_timeout = 3000  # Change back timeout to standard value
 
-            save_float_list_as_bin(output, "iq_capture.bin")
+            #save_float_list_as_bin(output, "iq_capture.bin")
             #iq_data = collect_iq_samples(nrq, trace_length=10000)
-            iq_pairs = bin_to_csv("iq_capture.bin", "iq_capture.csv")
-
-            
+            #iq_pairs = bin_to_csv("iq_capture.bin", "iq_capture.csv")
             #nv.set_frequencies(opt.start, opt.stop, opt.points)
 
         if opt.plot or opt.save or opt.scan:
@@ -396,11 +394,6 @@ class RSHelper:
             #iq_data = collect_iq_samples(nrq, trace_length=10000)
             iq_pairs = bin_to_csv("iq_capture.bin", "iq_capture.csv")
 
-
-        if opt.save:
-            # nv.writeCSV(s, opt.save)
-            iq_pairs = bin_to_csv("iq_capture.bin", "iq_capture.csv")
-
         if opt.plot:
             # nv.logmag(s)
             # # Adding axis labels
@@ -419,7 +412,8 @@ class RSHelper:
                 st.pyplot(plot_time_domain(iq))
 
                 st.subheader("🔊 Frequency-Domain Plot (FFT)")
-                st.pyplot(plot_fft(iq, sample_rate))
+                center = (opt.start + opt.stop) // 2
+                st.pyplot(plot_fft(iq, sample_rate,center))
             else:
                 st.info("Please upload a CSV file with 'I' and 'Q' columns.")            
             
