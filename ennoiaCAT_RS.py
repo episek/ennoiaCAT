@@ -149,12 +149,18 @@ if lang:
         def load_model_and_tokenizer():
             return RSHelper.load_lora_model()
 
-        st.write("\n⏳ Working in OFFLINE mode. Loading local model... (might take a minute)")
+        text=("\n⏳ Working in OFFLINE mode. Loading local model... (might take a minute)")
+        translated = GoogleTranslator(source='auto', target=lang).translate(text)
+        st.write(translated)
         tokenizer, peft_model, device = load_model_and_tokenizer()
-        st.write(f"Device set to use {device}")
+        text=(f"Device set to use {device}")
+        translated = GoogleTranslator(source='auto', target=lang).translate(text)
+        st.write(translated)
         map_api = MapAPI(peft_model, tokenizer)
     else:
-        st.write("\n⏳ Working in ONLINE mode.")  
+        text=("\n⏳ Working in ONLINE mode.")  
+        translated = GoogleTranslator(source='auto', target=lang).translate(text)
+        st.write(translated)
         client, ai_model = RSHelper.load_OpenAI_model()
         map_api = MapAPI() 
 
@@ -282,66 +288,43 @@ if lang:
         if isinstance(api_dict, dict):
             opt = SimpleNamespace(**api_dict)
             print(f"opt = {opt}")
-            gcf = helper.configure_RS(opt)
+            (translated, gcf) = helper.configure_RS(opt,lang)
+            st.write(translated)
             #st.pyplot(gcf)
         else:
             st.error("API response is not a valid dictionary. Setting default options.")
      
-        try:
-            result = helper.read_signal_strength('max_signal_strengths.csv')
-            if not result:
-                st.error("Could not read signal strength data.")
+        # try:
+            # result = helper.read_signal_strength('max_signal_strengths.csv')
+            # if not result:
+                # st.error("Could not read signal strength data.")
 
-            sstr, freq = result
-            freq_mhz = [x / 1e6 for x in freq]
-            print(f"\nSignal strengths: {sstr}")
-            print(f"\nFrequencies: {freq_mhz}")
+            # sstr, freq = result
+            # freq_mhz = [x / 1e6 for x in freq]
+            # print(f"\nSignal strengths: {sstr}")
+            # print(f"\nFrequencies: {freq_mhz}")
             
-            operator_table = helper.get_operator_frequencies()
-            if not operator_table:
-                st.error("Operator table could not be loaded.")
+            # operator_table = helper.get_operator_frequencies()
+            # if not operator_table:
+                # st.error("Operator table could not be loaded.")
 
-            frequency_report_out = helper.analyze_signal_peaks(sstr, freq_mhz, operator_table)
-            print(f"\nFrequency report: {frequency_report_out}")
+            # frequency_report_out = helper.analyze_signal_peaks(sstr, freq_mhz, operator_table)
+            # print(f"\nFrequency report: {frequency_report_out}")
 
-        except Exception as e:
-            st.error(f"Failed to process request: {str(e)}")
+        # except Exception as e:
+            # st.error(f"Failed to process request: {str(e)}")
           
       
-        # Convert to Pandas DataFrame
-        df = pd.DataFrame(frequency_report_out)
+        # # Convert to Pandas DataFrame
+        # df = pd.DataFrame(frequency_report_out)
 
-        # Display as a table in Streamlit
-        st.dataframe(df)  # Interactive table
+        # # Display as a table in Streamlit
+        # st.dataframe(df)  # Interactive table
         
         meas_prep(nrq)
-        translated,iq_pair = measure(nrq)
-        st.write(translated)
+        iq_pair = measure(nrq, lang)
+        #st.write(translated)
         
-        # === Streamlit UI ===
-        #st.set_page_config(page_title="IQ Signal FFT Viewer", layout="centered")
-        #st.title("📡 IQ Signal Viewer (.csv)")
-
-        #uploaded_file = st.file_uploader("Upload I/Q CSV File", type="csv")
-        #sample_rate = st.number_input("Sample Rate (Hz)", value=122_880_000, step=1_000_000)
-        
-        #uploaded_file = "iq_capture.csv"  # Change to your file location
-        #sample_rate = 122880000
-
-        #if uploaded_file and os.path.exists(uploaded_file):
-        #    iq = load_iq_csv(uploaded_file)
-        #    st.subheader("🕒 Time-Domain Plot")
-        #    st.pyplot(plot_time_domain(iq))
-
-        #    st.subheader("🔊 Frequency-Domain Plot (FFT)")
-        #    translated, plotout = plot_fft(iq, sample_rate)
-        #    st.write(translated)
-        #    # Display the FFT plot
-        #    st.pyplot(plotout)
-        #else:
-        #    st.info("Please upload a CSV file with 'I' and 'Q' columns.")
-
-        # Close the instrument connection
         close(nrq)
         text = "Ask me more"
         translated = GoogleTranslator(source='auto', target=lang).translate(text)

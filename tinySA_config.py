@@ -308,7 +308,9 @@ class TinySAHelper:
                 if opt.start or opt.stop:
                     nv.set_sweep(opt.start, opt.stop)
                     nv.fetch_frequencies()
+                    s = nv.send_scan(opt.start, opt.stop)
                     s = nv.data(p)
+                    nv.resume()
 
         if opt.save:
             nv.writeCSV(s, opt.save)

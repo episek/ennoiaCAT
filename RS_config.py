@@ -15,7 +15,7 @@ import numpy as np
 from scipy.signal import find_peaks
 import struct
 import pandas as pd
-
+from deep_translator import GoogleTranslator
 
 class RSHelper:
     def __init__(self, model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0"):
@@ -61,6 +61,14 @@ class RSHelper:
             {
                 "role": "user",
                 "content": "How do I configure the R&S NRQ6 power sensor?"
+            },
+            {
+                "role": "user",
+                "content": "How do I configure the NRQ6"
+            },
+            {
+                "role": "user",
+                "content": "How do I configure the R&S"
             },
             {
                 "role": "assistant",
@@ -262,7 +270,7 @@ class RSHelper:
 
 
 
-    def configure_RS(self, opt):
+    def configure_RS(self, opt, lang):
         
         def save_float_list_as_bin(float_list, filename):
             with open(filename, 'wb') as f:
@@ -309,26 +317,31 @@ class RSHelper:
             ax[0].set_title('Time Domain Signal')
             ax[0].grid(True)
             ax[1].grid(True)
+            time_domain_power = 10*np.log10(np.sum(np.abs(iq)**2) / len(iq) ) # Power in time domain
+            #st.write(f"Time Domain Power: {time_domain_power}")
             return fig
 
-        def plot_fft(iq, sample_rate, centerFreq=0):
+        def plot_fft(iq, sample_rate, centerFreq=0, lang="en"):
             N = len(iq)
             fft_data = np.fft.fftshift(np.fft.fft(iq))
             freqs = np.fft.fftshift(np.fft.fftfreq(N, d=1/sample_rate))
-            magnitude_db = 20 * np.log10(np.abs(fft_data) + 1e-12)
+            magnitude_db = 10 * np.log10(np.abs(fft_data)**2/N + 1e-17)
             magnitude_db[N // 2] = magnitude_db[N // 2]-60
             
-            #text = f"Detected high DC component of > 60dB above noise floor. Suppressed the DC Component"
-            #translated = GoogleTranslator(source='auto', target=lang).translate(text)
-            #st.write(translated)        
+            # Verify power consistency
+            freq_domain_power = 10*np.log10(np.sum(np.abs(fft_data)**2)/N)  # Power in frequency domain
+            #st.write(f"Freq Domain Power: {freq_domain_power}")
+            text = f"Detected high DC component of > 60dB above noise floor. Suppressed the DC Component"
+            translated = GoogleTranslator(source='auto', target=lang).translate(text)
+            #st.write(text)        
 
             fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot((freqs +centerFreq) / 1e6, magnitude_db)
+            ax.plot((freqs + centerFreq) / 1e6, magnitude_db)
             ax.set_xlabel('Frequency (MHz)')
             ax.set_ylabel('Magnitude (dB)')
             ax.set_title('FFT Spectrum')
             ax.grid(True)
-            return fig
+            return (translated, fig)
 
 
         resource = 'TCPIP::nrq6-101528::hislip0'
@@ -413,13 +426,14 @@ class RSHelper:
 
                 st.subheader("🔊 Frequency-Domain Plot (FFT)")
                 center = (opt.start + opt.stop) // 2
-                st.pyplot(plot_fft(iq, sample_rate,center))
+                translated, fig =plot_fft(iq, sample_rate,center,lang)
+                st.pyplot(fig)
             else:
                 st.info("Please upload a CSV file with 'I' and 'Q' columns.")            
             
             gcf = 0
         nv.close()
-        return gcf
+        return (translated,gcf)
     
     
     def find_max_signal_strength_to_csv(self,file_list, output_filename="max_signal_strengths.csv", min_strength=-80):

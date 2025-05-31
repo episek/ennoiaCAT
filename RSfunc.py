@@ -10,7 +10,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-
+import streamlit as st
 
 def com_prep(nrq, lang='en'):
     """Preparation of the communication (termination, etc...)"""
@@ -153,7 +153,7 @@ def measure(nrq, lang='en'):
     duration = inter-start  # And calculate process time
     text = f"After {round(duration, 1)} seconds {len(output)} I/Q samples have been recorded."
     str1 = GoogleTranslator(source='auto', target=lang).translate(text)
-    #st.write(translated)        
+    st.write(str1)        
     #st.write(f'After {round(duration, 1)} seconds {len(output)} I/Q samples have been recorded.')
     # Perform 2nd take
     #nrq.write('INITiate:IMMediate')
@@ -182,15 +182,16 @@ def measure(nrq, lang='en'):
     
     end = time()
     duration = end - start
-    text = f"After {round(duration, 1)} seconds both records have been taken, with the last one {len(output)} I/Q samples have been recorded."
+    # text = f"After {round(duration, 1)} seconds both records have been taken, with the last one {len(output)} I/Q samples have been recorded."
+    text = f"After {round(duration, 1)} seconds, {len(output)} I/Q samples have been saved."
     str2 = GoogleTranslator(source='auto', target=lang).translate(text)
-    text = str1 + str2
-    parts = text.split(',')
-    translated = ', '.join(parts)
-    #st.write(translated)        
+    # text = str1 + str2
+    # parts = text.split(',')
+    # translated = ', '.join(parts)
+    st.write(str2)        
     #st.write(f'After {round(duration, 1)} seconds both records have been taken,'
     #      f'with the last one {len(output)} I/Q samples have been recorded.')
-    return(translated,iq_pairs)
+    return(iq_pairs)
 
 
 def load_iq_csv(uploaded_file):
