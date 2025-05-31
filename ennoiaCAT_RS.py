@@ -312,36 +312,36 @@ if lang:
         # Display as a table in Streamlit
         st.dataframe(df)  # Interactive table
         
-    meas_prep(nrq)
-    translated,iq_pair = measure(nrq)
-    st.write(translated)
-    
-    # === Streamlit UI ===
-    #st.set_page_config(page_title="IQ Signal FFT Viewer", layout="centered")
-    #st.title("📡 IQ Signal Viewer (.csv)")
-
-    #uploaded_file = st.file_uploader("Upload I/Q CSV File", type="csv")
-    #sample_rate = st.number_input("Sample Rate (Hz)", value=122_880_000, step=1_000_000)
-    
-    uploaded_file = "iq_capture.csv"  # Change to your file location
-    sample_rate = 122880000
-
-    if uploaded_file and os.path.exists(uploaded_file):
-        iq = load_iq_csv(uploaded_file)
-        st.subheader("🕒 Time-Domain Plot")
-        st.pyplot(plot_time_domain(iq))
-
-        st.subheader("🔊 Frequency-Domain Plot (FFT)")
-        translated, plotout = plot_fft(iq, sample_rate)
+        meas_prep(nrq)
+        translated,iq_pair = measure(nrq)
         st.write(translated)
-        # Display the FFT plot
-        st.pyplot(plotout)
-    else:
-        st.info("Please upload a CSV file with 'I' and 'Q' columns.")
+        
+        # === Streamlit UI ===
+        #st.set_page_config(page_title="IQ Signal FFT Viewer", layout="centered")
+        #st.title("📡 IQ Signal Viewer (.csv)")
 
-    # Close the instrument connection
-    close(nrq)
-    text = "Ask me more"
-    translated = GoogleTranslator(source='auto', target=lang).translate(text)
-    st.write(translated)
+        #uploaded_file = st.file_uploader("Upload I/Q CSV File", type="csv")
+        #sample_rate = st.number_input("Sample Rate (Hz)", value=122_880_000, step=1_000_000)
+        
+        uploaded_file = "iq_capture.csv"  # Change to your file location
+        sample_rate = 122880000
+
+        if uploaded_file and os.path.exists(uploaded_file):
+            iq = load_iq_csv(uploaded_file)
+            st.subheader("🕒 Time-Domain Plot")
+            st.pyplot(plot_time_domain(iq))
+
+            st.subheader("🔊 Frequency-Domain Plot (FFT)")
+            translated, plotout = plot_fft(iq, sample_rate)
+            st.write(translated)
+            # Display the FFT plot
+            st.pyplot(plotout)
+        else:
+            st.info("Please upload a CSV file with 'I' and 'Q' columns.")
+
+        # Close the instrument connection
+        close(nrq)
+        text = "Ask me more"
+        translated = GoogleTranslator(source='auto', target=lang).translate(text)
+        st.write(translated)
     
