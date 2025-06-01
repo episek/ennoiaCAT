@@ -288,8 +288,9 @@ if lang:
         if isinstance(api_dict, dict):
             opt = SimpleNamespace(**api_dict)
             print(f"opt = {opt}")
-            (translated, gcf) = helper.configure_RS(opt,lang)
-            st.write(translated)
+            (translated1, translated2, gcf) = helper.configure_RS(opt,lang)
+            st.write(translated1)
+            st.write(translated2)
             #st.pyplot(gcf)
         else:
             st.error("API response is not a valid dictionary. Setting default options.")

@@ -377,6 +377,8 @@ class RSHelper:
             nv.write('SENSE:TRACe:IQ:RLENgth 15e5')  # IQ trace length is 1.5 million samples now
             nv.write('')
             nv.write('FORM:DATA REAL,64')
+            
+
 
            # nv.write('INITiate:IMMediate')  # Initiates a single trigger measurement
            # nv.visa_timeout = 10000  # Extend Visa timeout to avoid errors
@@ -406,6 +408,22 @@ class RSHelper:
             save_float_list_as_bin(output, "iq_capture.bin")
             #iq_data = collect_iq_samples(nrq, trace_length=10000)
             iq_pairs = bin_to_csv("iq_capture.bin", "iq_capture.csv")
+            
+            nv.write("FORMat:DATA ASCii")
+            cf = float(nv.query('SENSe:FREQuency:CENTer?').strip())
+            bw = float(nv.query('SENSe:BANDwidth:RESolution?').strip())
+            trace = nv.query('SENSE:TRACe:IQ:RLENgth?')
+            sf = float(nv.query('SENSe:BANDwidth:SRATe:CUV?').strip())
+            text = (
+                f"Current setup parameters:\n"
+                f"Center Frequency is {cf} Hz,\n"
+                f"Analysis bandwidth is {bw} Hz,\n"
+                f"Trace length is {trace} Sa,\n"
+                f"Sample Rate is {sf} Sa/s,\n"
+            )
+            translated1 = GoogleTranslator(source='auto', target=lang).translate(text)
+            #print(translated1)    
+
 
         if opt.plot:
             # nv.logmag(s)
@@ -417,7 +435,7 @@ class RSHelper:
             # plt.title("Signal strength (dBm) vs Frequency (Hz)")
             
             uploaded_file = "iq_capture.csv"  # Change to your file location
-            sample_rate = res*1.2288
+            sample_rate = sf
 
             if uploaded_file and os.path.exists(uploaded_file):
                 iq = load_iq_csv(uploaded_file)
@@ -426,14 +444,14 @@ class RSHelper:
 
                 st.subheader("🔊 Frequency-Domain Plot (FFT)")
                 center = (opt.start + opt.stop) // 2
-                translated, fig =plot_fft(iq, sample_rate,center,lang)
+                translated2, fig =plot_fft(iq, sample_rate,center,lang)
                 st.pyplot(fig)
             else:
                 st.info("Please upload a CSV file with 'I' and 'Q' columns.")            
             
             gcf = 0
         nv.close()
-        return (translated,gcf)
+        return (translated1,translated2,gcf)
     
     
     def find_max_signal_strength_to_csv(self,file_list, output_filename="max_signal_strengths.csv", min_strength=-80):
