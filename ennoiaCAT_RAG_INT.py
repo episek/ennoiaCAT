@@ -1,4 +1,32 @@
 
+import ennoia_client_lic as lic 
+import argparse
+
+parser = argparse.ArgumentParser(description="Ennoia License Client")
+parser.add_argument(
+    "--action",
+    choices=["activate", "verify"],
+    default="verify",
+    help="Action to perform (default: verify)"
+)
+parser.add_argument("--key", help="Ennoia License key for activation")
+args = parser.parse_args()
+
+
+if args.action == "activate":
+    if not args.key:
+        print("❗ Please provide a license key with --key")
+    else:
+        success = lic.request_license(args.key)
+elif args.action == "verify":
+    success = lic.verify_license_file()
+else:
+    success = lic.verify_license_file()
+  
+if not success:
+    print("❌ License verification failed. Please check your license key or contact support.")
+    exit()
+    
 import json
 import ast
 import streamlit as st
@@ -6,6 +34,8 @@ from tinySA_config import TinySAHelper
 from map_api import MapAPI
 from types import SimpleNamespace
 import pandas as pd
+
+
 
 
     # Define option descriptions for reference
@@ -32,6 +62,11 @@ st.markdown(
     """
 )
 
+if not success:
+    st.error("Ennoia License verification failed. Please check your license key or contact support.")
+    st.stop()
+else:
+    st.success("Ennoia License verified successfully.")
 
 # --- App logic starts here ---
 selected_options = TinySAHelper.select_checkboxes()
@@ -185,6 +220,8 @@ if prompt:
 
         frequency_report_out = helper.analyze_signal_peaks(sstr, freq_mhz, operator_table)
         print(f"\nFrequency report: {frequency_report_out}")
+        if not frequency_report_out:
+            st.write("No strong trained frequency band seen.")
 
     except Exception as e:
         st.error(f"Failed to process request: {str(e)}")
