@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.exceptions import InvalidSignature
 
-SERVER_URL = "http://localhost:5000"
+SERVER_URL = "http://localhost:9000"
 
 def get_fingerprint():
     raw = f"{uuid.getnode()}"

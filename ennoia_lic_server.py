@@ -27,7 +27,7 @@ private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 public_key = private_key.public_key()
 
 # Log file path
-LOG_FILE = "license_log.jsonl"
+#LOG_FILE = "license_log.jsonl"
 
 def log_event(event: dict):
     print("📣 Logging event:", event)  # Debug print
@@ -59,7 +59,7 @@ def verify():
         log_event(event)
         return jsonify({"valid": False, "reason": event["reason"]}), 403
 
-    if datetime.now(timezone.utc).isoformat() > datetime.strptime(license_info['expires'], "%Y-%m-%d"):
+    if datetime.now(timezone.utc) > datetime.strptime(license_info['expires'], "%Y-%m-%d").replace(tzinfo=timezone.utc):
         event["status"] = "rejected"
         event["reason"] = "License expired"
         log_event(event)
@@ -115,4 +115,4 @@ def get_public_key():
     return {"public_key": pem.decode()}
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=9000)
