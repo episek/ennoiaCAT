@@ -69,7 +69,7 @@ class MapAPI:
             {
                 "role": "assistant",
                  "content": (
-                     "{'plot': True, 'scan': False, 'start': 1000000.0, 'stop': 850000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
+                     "{'plot': True, 'scan': False, 'start': 300000000.0, 'stop': 850000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
                 )
             },
             {
@@ -89,7 +89,7 @@ class MapAPI:
             {
                 "role": "assistant",
                  "content": (
-                     "{'plot': True, 'scan': False, 'start': 1000000.0, 'stop': 900000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
+                     "{'plot': True, 'scan': False, 'start': 300000000.0, 'stop': 900000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
                 )
             }, 
         ]
@@ -154,7 +154,7 @@ class MapAPI:
         opts = {
             "plot": True,
             "scan": False,
-            "start": 1000000.0,
+            "start": 300000000.0,
             "stop": 900000000.0,
             "points": 101,
             "port": None,
