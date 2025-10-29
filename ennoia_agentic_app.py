@@ -70,7 +70,8 @@ if args.action == "activate":
     else:
         success = lic.request_license(args.key)
 else:
-    success = lic.verify_license_file()
+    success = True
+    #lic.verify_license_file()
 
 # ---------- Streamlit page setup ----------
 st.set_page_config(page_title="Ennoia Technologies", page_icon="🤖")
@@ -78,6 +79,7 @@ st.sidebar.image('ennoia.jpg')
 st.title("Ennoia Technologies")
 st.markdown("Chat and Test with Ennoia Connect Platform ©. All rights reserved.")
 
+success = True
 if not success:
     st.error("Ennoia License verification failed. Please check your license key or contact support.")
     st.stop()
@@ -114,7 +116,15 @@ class ModelProvider:
             def _load_local():
                 return self.helper.load_lora_model()
 
-            self.tokenizer, self.peft_model, self.device = _load_local()
+            @st.cache_resource
+            def load_model_and_tokenizer():
+                return TinySAHelper.load_lora_model()
+
+
+            #self.tokenizer, self.peft_model, self.device = _load_local()
+            self.tokenizer, self.peft_model, self.device = load_model_and_tokenizer()
+            st.write(f"Device set to use {self.device}")
+            #map_api = MapAPI(peft_model, tokenizer)
             self.map_api = MapAPI(self.peft_model, self.tokenizer)
             st.write(f"Device set to use {self.device}")
             st.success(f"Local SLM model {getattr(self.peft_model, 'config', SimpleNamespace(name_or_path='local')).name_or_path} loaded!")

@@ -13,6 +13,8 @@ import streamlit as st
 import csv
 import numpy as np
 from scipy.signal import find_peaks
+from dotenv import load_dotenv
+
 
 class TinySAHelper:
     def __init__(self, model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0"):
@@ -249,6 +251,7 @@ class TinySAHelper:
         from openai import OpenAI
         from openai_api_key_verifier import verify_api_key, check_model_access, list_models, get_account_usage  
         # Replace with your actual API key
+        load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         # Verify if the API key is valid
         is_valid = verify_api_key(api_key)
