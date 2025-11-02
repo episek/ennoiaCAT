@@ -80,6 +80,7 @@ st.sidebar.image('ennoia.jpg')
 st.title("Ennoia Technologies")
 st.markdown("Rapid Edge Analysis (REA) with Ennoia Connect Platform ©. All rights reserved.")
 
+success = True
 if not success:
     st.error("Ennoia License verification failed. Please check your license key or contact support.")
     st.stop()
@@ -207,7 +208,7 @@ def _open_sftp_with_retries(ssh: paramiko.SSHClient, retries: int = 3, base_slee
         except Exception as e:
             last = e
             time.sleep(base_sleep + i * 0.4)
-    raise RuntimeError(f"SFTP open failed after {retries} attempts: {last}")
+    raise RuntimeError(f"File transfer failed after {retries} attempts: {last}")
 
 def _adopt_operator_table(local_json_path: str, *, city: str, region: str):
     with open(local_json_path, "r", encoding="utf-8") as f:
@@ -281,7 +282,7 @@ def run_remote_build_and_fetch(
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    with st.status("🔐 Connecting to EC2 via SSH…", expanded=False) as status:
+    with st.status("🔐 Connecting to AWS from Edge for Deep Packet Inspection ...", expanded=False) as status:
         try:
             client.connect(
                 hostname=host,
@@ -337,7 +338,7 @@ def run_remote_build_and_fetch(
         try:
             sftp = _open_sftp_with_retries(client, retries=3)
         except Exception as e:
-            status.update(label=f"SFTP open failed: {e}", state="error")
+            status.update(label=f"File open failed: {e}", state="error")
             client.close()
             return None
 
@@ -354,7 +355,7 @@ def run_remote_build_and_fetch(
             sftp.close(); client.close()
             return None
 
-        status.update(label="⬇️ Downloading JSON via SFTP…")
+        status.update(label="⬇️ Receiving from AWS to Edge…")
         local_path = os.path.join(local_out_dir, os.path.basename(remote_json_path))
         try:
             sftp.get(remote_json_path, local_path)
@@ -426,14 +427,14 @@ class LocationAgent:
         st.header("2) Rapid Edge Analysis: Configuration Agent")
 
         # SSH settings panel (read defaults from env)
-        with st.expander("🔧 Remote builder (SSH→EC2) settings", expanded=False):
-            ssh_host = st.text_input("EC2 Public IP / DNS", value=os.getenv("ENNOIA_SSH_HOST", ""))
+        with st.expander("🔧 Remote AWS settings", expanded=False):
+            ssh_host = st.text_input("Public IP / DNS", value=os.getenv("ENNOIA_SSH_HOST", ""))
             ssh_user = st.text_input("SSH Username", value=os.getenv("ENNOIA_SSH_USER", "ec2-user"))
-            ssh_key  = st.text_input("Path to .pem (Windows)", value=os.getenv("ENNOIA_SSH_KEY", r"C:\Keys\ennoia-ec2.pem"))
+            ssh_key  = st.text_input("Path to .pem (Windows)", value=os.getenv("ENNOIA_SSH_KEY", r"C:\Users\rices\ennoiaCAT\AWS=Hackathon.pem"))
             remote_python = st.text_input("Remote Python", value=os.getenv("ENNOIA_REMOTE_PY", "python3"))
             remote_script = st.text_input("Remote script path", value=os.getenv("ENNOIA_REMOTE_SCRIPT", "/home/ec2-user/operator_table_service.py"))
             remote_out_dir = st.text_input("Remote output dir", value=os.getenv("ENNOIA_REMOTE_OUT", "/tmp/ennoia_tables"))
-            local_out_dir = st.text_input("Local output dir", value=os.getenv("ENNOIA_LOCAL_OUT", r"C:\ennoia\tables"))
+            local_out_dir = st.text_input("Local output dir", value=os.getenv("ENNOIA_LOCAL_OUT", r"C:\Users\rices\ennoiaCAT"))
 
         # Detect/enter location
         method = st.radio("Location method", ["Auto (IP)", "Manual"], horizontal=True)
@@ -499,7 +500,7 @@ class LocationAgent:
             st.session_state[key_loc] = True
 
         # Manual trigger if needed
-        if st.button("Build operator table via SSH now"):
+        if st.button("Build operator table from AWS now"):
             local_path = _try_run()
 
         # If file arrived, adopt it atomically (updates session + reruns)
@@ -662,7 +663,6 @@ def scan_wifi():
 
     df = pd.DataFrame(networks).sort_values(by="Signal (dBm)", ascending=False)
     return df
-
 
 
 class AnalysisAgent:
@@ -1019,12 +1019,12 @@ def oran_pcap_to_csv_step():
     #st.title("📡 O-RAN U-Plane PCAP to CSV Converter")
     #st.header("4) REA PCAP Agent")
 
-    uploaded_file = st.file_uploader("Upload O-RAN U-Plane PCAP", type=["pcap", "pcapng"])
+    uploaded_file = st.file_uploader("Transfer O-RAN Fronthaul PCAP", type=["pcap", "pcapng"])
     if uploaded_file:
         with open("temp.pcap", "wb") as f:
             f.write(uploaded_file.read())
 
-        with st.spinner("Uploading and processing..."):
+        with st.spinner("Transferring and processing..."):
             try:
                 res = requests.post("http://localhost:8010/upload", files={"pcap": open("temp.pcap", "rb")})
                 if res.ok:
@@ -1059,6 +1059,10 @@ def oran_pcap_to_csv_step():
 
                     # Save to a new CSV
                     df.to_csv(csv_path, index=False, header=False)
+                    #import zipfile
+
+                    #with zipfile.ZipFile('csv.zip', 'w') as zipf:
+                    #    zipf.write(csv_path)  # Replace with your file name
 
                 else:
                     st.error(f"❌ Failed to process PCAP: {res.status_code}")
@@ -1083,9 +1087,9 @@ def nav_buttons():
             
 ENNOIA_SSH_HOST="98.84.113.163"
 ENNOIA_SSH_USER="ec2-user"
-ENNOIA_SSH_KEY=r"C:\Users\epise\.ssh\AWS-Hackathon.pem"
+ENNOIA_SSH_KEY=r"C:\Users\rices\ennoiaCAT\AWS-Hackathon.pem"
 ENNOIA_REMOTE_IN="/home/ec2-user/ennoiaCAT/csv_files"
-ENNOIA_LOCAL_OUT=r"C:\ennoia\tables"
+ENNOIA_LOCAL_OUT=r"C:\Users\rices\ennoiaCAT"
 ENNOIA_REMOTE_OUT= "/home/ec2-user/ennoiaCAT/csv_files/out"
 def sftp_upload_atomic(local_path: str, remote_dir: str) -> str:
     import os, time, paramiko
@@ -1122,7 +1126,7 @@ def sftp_upload_atomic(local_path: str, remote_dir: str) -> str:
                 pass  # file didn’t exist, fine
 
         # ✅ Step 2: upload as .part, then rename atomically
-        print(f"⬆️ Uploading {local_path} → {remote_final}")
+        print(f"⬆️ Transferring {local_path} → {remote_final}")
         sftp.put(local_path, remote_tmp)
         sftp.rename(remote_tmp, remote_final)
 
@@ -1134,7 +1138,7 @@ def sftp_upload_atomic(local_path: str, remote_dir: str) -> str:
             flag.write("ready\n")
         sftp.rename(ready_tmp, ready_final)
 
-        print(f"✅ Uploaded {remote_final} and created {ready_final}")
+        print(f"✅ Transferred {remote_final} and created {ready_final}")
     finally:
         sftp.close()
         ssh.close()
@@ -1149,9 +1153,9 @@ def trigger_flask(remote_path: str):
 
 # Example integration after you generate/write the CSV:
 def send_csv_to_ec2_and_process(local_csv_path: str):
-    st.info("Uploading CSV to EC2…")
+    st.info("Transferring from Edge to AWS…")
     remote_path = sftp_upload_atomic(local_csv_path, ENNOIA_REMOTE_IN)
-    st.success(f"Successfully Uploaded to {remote_path}")
+    st.success(f"Successfully transferred to {remote_path}")
 
     # st.info("Triggering Flask processing…")
     # resp = trigger_flask(remote_path)
@@ -1231,12 +1235,12 @@ def fetch_report_when_ready(base_filename: str, local_dir: str = ".") -> str:
         # wait for done flag written by EC2 watcher after saving genreport
         ok = wait_remote_file(sftp, remote_done, stable_seconds=0.5, timeout=900)
         if not ok:
-            raise TimeoutError("Timed out waiting for report completion on EC2")
+            raise TimeoutError("Timed out waiting for report completion on AWS")
 
         # (optional) ensure report file itself is stable
         ok = wait_remote_file(sftp, remote_report, stable_seconds=0.5, timeout=30)
         if not ok:
-            raise TimeoutError("Report file did not stabilize on EC2")
+            raise TimeoutError("Report file did not stabilize on AWS")
 
         # download report
         sftp.get(remote_report, local_report)
@@ -1279,29 +1283,30 @@ def main():
     
     # ───────────── Start button gate ─────────────
     with st.form("ec2_start_form", clear_on_submit=False):
-        st.caption("Click **Start** to upload the trimmed CSV to EC2 and trigger processing.")
+        st.caption("Click **Start** to transfer the trimmed output to AWS and trigger processing.")
         start_clicked = st.form_submit_button("Start", use_container_width=True)
 
     if start_clicked:
         # Prevent accidental double-submits
         if st.session_state.get("ec2_upload_in_progress"):
-            st.info("Upload already in progress…")
+            st.info("Transfer already in progress…")
             return
 
         st.session_state["ec2_upload_in_progress"] = True
         send_csv_to_ec2_and_process(r"outputs\temp.pcap.csv")
         st.session_state["ec2_upload_in_progress"] = False
-        st.success("🚀 EC2 upload initiated.")
+        st.success("🚀 AWS transfer initiated.")
     
     #st.info("Waiting for EC2 report…")
     try:
         local_report_path = fetch_report_when_ready("temp.pcap.csv", local_dir=".")
-        st.success("Report received from EC2 ✅")
+        st.success("Report received from AWS ✅")
 
         # Show the report text
         with open(local_report_path, "r", encoding="utf-8") as f:
             report_text = f.read()
-        st.text(report_text)
+        #st.text(report_text)
+        st.markdown(report_text, unsafe_allow_html=True)
 
         # Offer download
         with open(local_report_path, "rb") as f:
