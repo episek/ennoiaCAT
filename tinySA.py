@@ -4,9 +4,28 @@ import numpy as np
 import pylab as pl
 import struct
 from serial.tools import list_ports
+import re
 
 VID = 0x0483 #1155
 PID = 0x5740 #22336
+
+_NUM_RE = re.compile(r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?')
+
+def _first_float(s: str):
+    """Extract the first float from a messy line, or None if none found."""
+    if not s:
+        return None
+    s = s.strip().replace('\x00', '').replace(',', '.')
+    try:
+        return float(s)
+    except Exception:
+        m = _NUM_RE.search(s)
+        if m:
+            try:
+                return float(m.group(0))
+            except Exception:
+                return None
+    return None
 
 # Get tinysa device automatically
 def getport() -> str:
@@ -124,16 +143,15 @@ class tinySA:
         result = ''
         line = ''
         while True:
-            c = self.serial.read().decode('utf-8')
-            if c == chr(13):
-                next # ignore CR
+            c = self.serial.read().decode('utf-8', errors='ignore')
+            if c == '\r':
+                continue
             line += c
-            if c == chr(10):
+            if c == '\n':
                 result += line
                 line = ''
-                next
+                continue
             if line.endswith('ch>'):
-                # stop on prompt
                 break
         return result
 
@@ -172,15 +190,26 @@ class tinySA:
                 return float(d)
         return 0
 
-    def data(self, array = 2):
+    def data(self, array=2, *, strict=False, require_min=1):
+        """
+        Robust numeric parser for tinySA 'data' command.
+        Extracts numeric values from each line and ignores malformed ones.
+        """
         self.send_command("data %d\r" % array)
-        data = self.fetch_data()
-        x = []
-        for line in data.split('\n'):
-            if line:
-                d = line.strip().split(' ')
-                x.append(float(line))
-        return np.array(x)
+        raw = self.fetch_data()
+        xs = []
+        for line in str(raw).split('\n'):
+            if not line.strip():
+                continue
+            val = _first_float(line)
+            if val is None:
+                if strict:
+                    raise ValueError(f"Non-numeric line in tinySA data(): {repr(line)}")
+                continue
+            xs.append(val)
+        if strict and len(xs) < require_min:
+            raise ValueError("No numeric samples parsed in tinySA data().")
+        return np.asarray(xs, dtype=float)
 
     def fetch_frequencies(self):
         self.send_command("frequencies\r")

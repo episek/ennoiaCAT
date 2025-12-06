@@ -28,6 +28,8 @@ class TinySAHelper:
             "Assume every question is about TinySA.\n"
             "If the user asks anything unrelated, reply with: 'I can only assist with queries related to the TinySA spectrum analyzer.'\n"
             "Do not provide generic RF advice. Never ask follow-up questions. Repeat all numeric values exactly.\n"
+            "Answer only with complete sentences. Do not cut the sentence when displaying it.\n"
+            "The information will be provided in a numbered format\n"
         )
 
         return system_prompt
@@ -251,7 +253,6 @@ class TinySAHelper:
         from openai import OpenAI
         from openai_api_key_verifier import verify_api_key, check_model_access, list_models, get_account_usage  
         # Replace with your actual API key
-        load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         # Verify if the API key is valid
         is_valid = verify_api_key(api_key)
