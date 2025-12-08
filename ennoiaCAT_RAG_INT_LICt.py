@@ -25,7 +25,7 @@ else:
   
 if not success:
     print("❌ License verification failed. Please check your license key or contact support.")
-    exit()
+    #exit()
     
 import json
 import ast
@@ -64,7 +64,7 @@ st.markdown(
 
 if not success:
     st.error("Ennoia License verification failed. Please check your license key or contact support.")
-    st.stop()
+    #st.stop()
 else:
     st.success("Ennoia License verified successfully.")
 

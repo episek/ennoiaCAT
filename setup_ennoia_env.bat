@@ -4,14 +4,14 @@ REM  Ennoia Environment Setup for Streamlit (with Conda Integration)
 REM =============================================================
 
 REM === USER CONFIGURATION ===
-set "ENNOIA_ENV_NAME=streamlit"
+set "ENNOIA_ENV_NAME=ennoia"
 set "ENNOIA_SSH_HOST=98.84.113.163"
 set "ENNOIA_SSH_USER=ec2-user"
-set "ENNOIA_SSH_KEY=C:\Users\epise\.ssh\AWS-Hackathon.pem"
+set "ENNOIA_SSH_KEY=C:\Users\rices\ennoiaCAT\AWS-Hackathon.pem"
 set "ENNOIA_REMOTE_PY=python3"
 set "ENNOIA_REMOTE_SCRIPT=/home/ec2-user/ennoiaCAT/operator_table_service.py"
 set "ENNOIA_REMOTE_OUT=/tmp/ennoia_tables"
-set "ENNOIA_LOCAL_OUT=C:\ennoia\tables"
+set "ENNOIA_LOCAL_OUT=C:\Users\rices\ennoiaCAT"
 set "STREAMLIT_FILE=ennoia_agentic_app.py"
 
 echo.
