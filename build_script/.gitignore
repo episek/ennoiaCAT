@@ -1,0 +1,20 @@
+# Build script outputs
+*.json
+*.html
+*.xml
+*.txt.report
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# mypy cache
+.mypy_cache/
+
+# pytest cache
+.pytest_cache/

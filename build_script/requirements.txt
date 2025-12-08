@@ -1,0 +1,21 @@
+# Code Quality and Testing Tools
+
+# Linting
+flake8>=6.0.0
+pylint>=3.0.0
+
+# Static Analysis
+mypy>=1.5.0
+bandit>=1.7.5
+
+# Complexity Analysis
+radon>=6.0.0
+
+# Code formatting (optional)
+black>=23.0.0
+isort>=5.12.0
+
+# Test coverage (for future test suites)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+coverage>=7.3.0
