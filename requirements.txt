@@ -1,41 +1,31 @@
-<<<<<<< HEAD
-langchain
-langchain-community
-faiss-cpu
-bs4
-requests
-python-dotenv
-torch
-transformers
-langchain_huggingface
-bitsandbytes
-accelerate
-datasets 
-peft
-=======
-openai
-openai_api_key_verifier
-streamlit
-numpy
-serial
-tinySA
-matplotlib
-pyserial
-json
-ast
-RS_config
-map_api
-types
-pandas
-struct
-csv
-RsInstrument
-time
-deep_translator
-socket
-subprocess
-os
-zipfile
-re
-Keysight
->>>>>>> b5cc0200b4bffdd955f375d7a47485614330b672
+# Core dependencies
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+
+# Serial communication
+pyserial>=3.5
+
+# VISA instrument control
+pyvisa>=1.13.0
+pyvisa-py>=0.7.0
+
+# OpenAI
+openai>=1.0.0
+openai-api-key-verifier>=1.0.0
+
+# PyTorch and AI libraries (for TinySA SLM mode)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+transformers>=4.30.0
+peft>=0.4.0
+accelerate>=0.20.0
+
+# Scientific computing
+scipy>=1.10.0
+
+# Additional utilities
+requests>=2.31.0
+python-dotenv>=1.0.0
