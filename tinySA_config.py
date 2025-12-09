@@ -251,7 +251,9 @@ class TinySAHelper:
     def load_OpenAI_model():
 
         from openai import OpenAI
-        from openai_api_key_verifier import verify_api_key, check_model_access, list_models, get_account_usage  
+        from openai_api_key_verifier import verify_api_key, check_model_access, list_models, get_account_usage
+        # Load environment variables from .env file
+        load_dotenv()
         # Replace with your actual API key
         api_key = os.getenv("OPENAI_API_KEY")
         # Verify if the API key is valid

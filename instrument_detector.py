@@ -71,6 +71,9 @@ class InstrumentDetector:
         """
         Detect Viavi OneAdvisor devices on network
 
+        IMPORTANT: To connect to Viavi OneAdvisor, you must configure your laptop's
+        network adapter IP address to 192.168.1.100 (same subnet as the Viavi device).
+
         Args:
             ip_range: List of IP addresses to check. If None, checks common defaults.
         """

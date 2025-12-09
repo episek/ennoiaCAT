@@ -54,6 +54,8 @@ if "instrument_adapter" not in st.session_state:
     st.session_state.instrument_adapter = None
 if "detection_done" not in st.session_state:
     st.session_state.detection_done = False
+if "viavi_user_prompt" not in st.session_state:
+    st.session_state.viavi_user_prompt = None
 
 # Main header
 st.sidebar.image('ennoia.jpg')
@@ -76,6 +78,21 @@ st.header("🔍 Instrument Detection")
 
 # Add IP configuration expander
 with st.expander("⚙️ Network Instrument Configuration (Optional)"):
+    st.info("""
+    ℹ️ **Network Setup Instructions:**
+
+    **For Viavi OneAdvisor:**
+    - Set your laptop's IP address to **192.168.1.100**
+    - Connect to the same network as the Viavi device
+    - Ensure SCPI port 5025 is not blocked by firewall
+
+    **For Keysight FieldFox:**
+    - Use 192.168.1.x subnet
+
+    **For Mavenir RU:**
+    - Use 10.10.10.x subnet
+    """)
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -175,10 +192,11 @@ if st.session_state.instrument_adapter and st.session_state.instrument_adapter.i
     ai_options = st.sidebar.multiselect(
         "Select AI Options:",
         ["SLM (Offline)", "Online LLM"],
-        default=["Online LLM"],
+        default=["SLM (Offline)"],
         key="ai_options"
     )
 
+    # ai_options is already stored in session state via the widget key
     # Initialize AI based on selection
     use_slm = "SLM (Offline)" in ai_options
 
@@ -198,22 +216,30 @@ if st.session_state.instrument_adapter and st.session_state.instrument_adapter.i
 
             if torch_available:
                 from tinySA_config import TinySAHelper
+                from map_api import MapAPI
 
                 @st.cache_resource
                 def load_model_and_tokenizer():
                     return TinySAHelper.load_lora_model()
 
+                @st.cache_resource
+                def create_map_api():
+                    """Create and cache the MapAPI instance with the loaded model"""
+                    tokenizer, peft_model, device = TinySAHelper.load_lora_model()
+                    return MapAPI(peft_model, tokenizer), device
+
                 st.write("⏳ Loading offline model...")
-                tokenizer, peft_model, device = load_model_and_tokenizer()
+                map_api, device = create_map_api()
                 st.write(f"✅ Local model loaded on {device}")
 
-                from map_api import MapAPI
-                map_api = MapAPI(peft_model, tokenizer)
+                # Store in session state for instrument adapters
+                st.session_state['map_api'] = map_api
 
         except Exception as e:
             st.error(f"Failed to load SLM: {e}")
             st.info("Falling back to online LLM")
             use_slm = False
+            st.session_state['map_api'] = None
 
     if not use_slm:
         try:
@@ -225,6 +251,10 @@ if st.session_state.instrument_adapter and st.session_state.instrument_adapter.i
 
             if "openai_model" not in st.session_state:
                 st.session_state["openai_model"] = ai_model
+            if "openai_client" not in st.session_state:
+                st.session_state["openai_client"] = client
+            # Clear map_api when using OpenAI
+            st.session_state['map_api'] = None
             st.write(f"✅ Online LLM model {ai_model} loaded")
 
         except Exception as e:
@@ -232,6 +262,8 @@ if st.session_state.instrument_adapter and st.session_state.instrument_adapter.i
             st.warning("AI features may not be available")
             # Don't stop - continue without AI
             map_api = None
+            st.session_state["openai_client"] = None
+            st.session_state['map_api'] = None
 
     # Get helper class from adapter
     helper = adapter.get_helper_class()
@@ -394,6 +426,17 @@ if st.session_state.instrument_adapter and st.session_state.instrument_adapter.i
 
             except Exception as e:
                 st.error(f"TinySA processing error: {str(e)}")
+
+        # Viavi OneAdvisor-specific spectrum plotting and signal analysis
+        if st.session_state.selected_instrument and \
+           st.session_state.selected_instrument.instrument_type.value == "Viavi OneAdvisor":
+            try:
+                # Set the prompt in session state so the adapter can process it
+                st.session_state['viavi_user_prompt'] = user_input
+                # Trigger a rerun to let the adapter's render_ui process the prompt
+                st.rerun()
+            except Exception as e:
+                st.error(f"Viavi processing error: {str(e)}")
 
         t.stop()
         st.write(f"⏱️ Elapsed: {fmt_seconds(t.elapsed())}")

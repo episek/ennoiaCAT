@@ -17,6 +17,10 @@ The platform supports the following instrument types:
 - **Connection**: Network (IP-based, default: 192.168.1.100)
 - **Config Module**: `ennoia_viavi/system_api.py`
 - **Features**: Professional RF spectrum analysis, cellular testing
+- **Network Setup Required**:
+  - **IMPORTANT**: Set your laptop's IP address to **192.168.1.100** on the network interface connected to the Viavi device
+  - Ensure laptop and Viavi are on the same network subnet
+  - Disable any VPN or firewall that might block SCPI communication on port 5025
 
 ### 3. **Mavenir 5G NR Radio Unit**
 - **Connection**: Network (NETCONF, default: 10.10.10.10)
@@ -208,10 +212,15 @@ Each instrument type requires its own configuration module:
 - Check Device Manager (Windows) or `lsusb` (Linux)
 
 **Network Instruments**:
+- **Configure your laptop's IP address first** (especially for Viavi):
+  - Viavi requires laptop IP: 192.168.1.100
+  - Keysight typically uses: 192.168.1.x range
+  - Mavenir uses: 10.10.10.x range
 - Verify IP address configuration
 - Check network connectivity (`ping <ip>`)
-- Ensure firewall allows connections
+- Ensure firewall allows connections (SCPI port 5025 for Viavi)
 - Verify instrument is powered on
+- Disable VPN if connection fails
 
 **VISA Instruments**:
 - Install VISA runtime (NI-VISA or Keysight IO)

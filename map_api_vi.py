@@ -12,7 +12,9 @@ No TinySA dependencies. SLM mode in the UI currently reuses the same
 OpenAI backend but can be extended later to use a local model.
 """
 
+import os
 from typing import List, Dict
+from dotenv import load_dotenv
 
 try:
     from openai import OpenAI
@@ -46,7 +48,10 @@ class MapAPI:
                 "and set OPENAI_API_KEY in your environment."
             )
 
-        self.client = OpenAI()
+        # Load environment variables
+        load_dotenv()
+
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.openai_model = openai_model
         self.temperature = temperature
         self.max_tokens = max_tokens
