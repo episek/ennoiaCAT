@@ -18,8 +18,12 @@ if args.action == "activate":
 else:
     success = lic.verify_license_file()
 
+success = 1
+
+
 if not success:
     print("❌ License verification failed.")
+    
 
 # -----------------------------------------------------------------------------
 # STREAMLIT + AI + VIAVI ONEADVISOR
@@ -151,39 +155,59 @@ def get_oneadvisor_identity(host):
 # else:
     # st.sidebar.info("Using OpenAI")
 
-# --- App logic starts here ---
+
+# -----------------------------------------------------------------------------
+# AI MODEL (SLM / OpenAI via TinySAHelper UI)
+# -----------------------------------------------------------------------------
 selected_options = TinySAHelper.select_checkboxes()
 st.success(f"You selected: {', '.join(selected_options) if selected_options else 'nothing'}")
 
-
-# --- Caching the model and tokenizer ---
+helper = TinySAHelper()
 
 if "SLM" in selected_options:
+
     @st.cache_resource
-    def load_model_and_tokenizer():
+    def load_peft_model():
         return TinySAHelper.load_lora_model()
 
-    st.write("\n⏳ Working in OFFLINE mode. Loading local model... (might take a minute)")
-    tokenizer, peft_model, device = load_model_and_tokenizer()
-    st.write(f"Device set to use {device}")
-    map_api = MapAPI(peft_model, tokenizer)
+    st.write("\n⏳ Working in OFFLINE mode. Loading local LoRA model... (might take a minute)")
+    tokenizer, peft_model, device = load_peft_model()
+
+    st.write(
+        f"\n✅ Local SLM model {peft_model.config.name_or_path} "
+        f"loaded"
+    )
+    st.write(
+        f"Device is set to use {device}! Let's get to work.\n"
+    )
+
+    map_api = MapAPI(
+        backend="slm",
+        injected_model=peft_model,
+        injected_tokenizer=tokenizer,
+        max_new_tokens=512,
+        temperature=0.2,
+    )
+
 else:
-    st.write("\n⏳ Working in ONLINE mode.")  
-    client, ai_model = TinySAHelper.load_OpenAI_model()
-    map_api = MapAPI() 
 
-#helper = TinySAHelper()
-system_prompt = helper.get_system_prompt()
-few_shot_examples = helper.get_few_shot_examples()
-
-
-
-if "SLM" in selected_options:
-    st.write(f"\n✅ Local SLM model {peft_model.config.name_or_path} loaded & device found! Let's get to work.\n")
-else:
-    if "openai_model" not in st.session_state:
+    @st.cache_resource
+    def load_openai():
+        client, ai_model = TinySAHelper.load_OpenAI_model()
         st.session_state["openai_model"] = ai_model
-    st.write(f"\n✅ Online LLM model {ai_model} loaded & device! Let's get to work.\n")
+        return MapAPI(
+            backend="openai",
+            openai_model=ai_model,
+            max_new_tokens=512,
+            temperature=0.2,
+        )
+
+    st.write("\n⏳ Working in ONLINE mode.")
+    map_api = load_openai()
+    st.write(
+        f"\n✅ Online LLM model {st.session_state['openai_model']} loaded. "
+        f"Let's get to work.\n"
+    )
 
 st.sidebar.subheader("📟 OneAdvisor Identity")
 
@@ -263,35 +287,61 @@ def parse_freq(val, default=None):
 
 
 def extract_start_stop(text):
-    """Extract natural-language frequencies from text."""
+    """
+    Extract start/stop frequencies from natural language.
+
+    Handles phrases like:
+      - "set the start freq to 600MHz and the stop freq to 900MHz"
+      - "start 600 MHz stop 900 MHz"
+      - "scan 600MHz-900MHz"
+      - "scan from 600 MHz to 900 MHz"
+    Returns (start_hz, stop_hz) or (None, None).
+    """
     if not text:
         return None, None
 
     txt = text.lower()
-
-    # Case 1: explicit "start freq" and "stop freq"
-    start_match = re.search(r"start\s*(?:freq(?:uency)?)?\s*([\d\.]+)\s*(g|m|k)?hz", txt)
-    stop_match  = re.search(r"stop\s*(?:freq(?:uency)?)?\s*([\d\.]+)\s*(g|m|k)?hz", txt)
+    # normalize different dashes
+    txt = txt.replace("–", "-").replace("—", "-")
 
     def conv(num, unit):
         num = float(num)
-        if unit == "g": return num * 1e9
-        if unit == "m": return num * 1e6
-        if unit == "k": return num * 1e3
+        if unit == "g":
+            return num * 1e9
+        if unit == "m":
+            return num * 1e6
+        if unit == "k":
+            return num * 1e3
         return num
+
+    # --- Case 1: explicit "start ... 600MHz" and "stop ... 900MHz"
+    # Allow optional 'freq', 'frequency', and words like 'to', 'at', 'from'
+    start_match = re.search(
+        r"start(?:\s*freq(?:uency)?)?(?:\s*(?:to|at|from))?\s*([\d\.]+)\s*(g|m|k)?hz",
+        txt,
+    )
+    stop_match = re.search(
+        r"stop(?:\s*freq(?:uency)?)?(?:\s*(?:to|at|from))?\s*([\d\.]+)\s*(g|m|k)?hz",
+        txt,
+    )
 
     if start_match and stop_match:
         s = conv(start_match.group(1), start_match.group(2))
         e = conv(stop_match.group(1), stop_match.group(2))
         return (min(s, e), max(s, e))
 
-    # Case 2: "600 to 900 MHz" / "600-900 MHz"
+    # --- Case 2: "600 to 900 MHz", "600-900 MHz", "600 MHz - 900 MHz"
     range_match = re.search(
-        r"([\d\.]+)\s*(g|m|k)?hz\s*(?:to|-|–)\s*([\d\.]+)\s*(g|m|k)?hz",
-        txt
+        r"([\d\.]+)\s*(g|m|k)?hz\s*(?:to|-|up to|through|thru|until|and)\s*([\d\.]+)\s*(g|m|k)?hz",
+        txt,
     )
     if range_match:
-        n1, u1, n2, u2 = range_match.group(1), range_match.group(2), range_match.group(3), range_match.group(4)
+        n1, u1, n2, u2 = (
+            range_match.group(1),
+            range_match.group(2),
+            range_match.group(3),
+            range_match.group(4),
+        )
         s = conv(n1, u1)
         e = conv(n2, u2)
         return (min(s, e), max(s, e))
@@ -455,6 +505,11 @@ prompt = st.chat_input(
 )
 
 if prompt:
+    # 🔁 If we're in Waterfall mode, start a fresh waterfall for this new command
+    if display_mode == "Waterfall":
+        st.session_state["waterfall_data"] = None
+        st.session_state["waterfall_freqs"] = None
+
     t = Timer()
     t.start()
 

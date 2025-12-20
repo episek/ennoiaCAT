@@ -45,7 +45,7 @@ class TinySAHelper:
             {
                 "role": "assistant",
                 "content": (
-                    "To set the start frequency to 300 MHz on the TinySA, press the “Start” button, then use "
+                    "To set the start frequency to 300 MHz on the TinySA, press the 'Start' button, then use "
                     "the navigation keys or rotary encoder to adjust the value to 300 MHz. Confirm the value by pressing 'OK'."
                 )
             },
@@ -56,7 +56,7 @@ class TinySAHelper:
             {
                 "role": "assistant",
                 "content": (
-                    "To set the stop frequency to 900 MHz on the TinySA, press the “Stop” button, then use the rotary "
+                    "To set the stop frequency to 900 MHz on the TinySA, press the 'Stop' button, then use the rotary "
                     "knob or arrow keys to change the value to 900 MHz. Confirm by pressing 'OK'."
                 )
             },
@@ -67,8 +67,8 @@ class TinySAHelper:
             {
                 "role": "assistant",
                 "content": (
-                    "To set the start frequency to 300 MHz and stop frequency to 900 MHz on the TinySA, press the “Start” button, then use the rotary "
-                    "knob or arrow keys to change the value to 300 MHz. Confirm by pressing 'OK'. Then press the “Stop” button and adjust the value to 900 MHz. Confirm by pressing 'OK'."
+                    "To set the start frequency to 300 MHz and stop frequency to 900 MHz on the TinySA, press the 'Start' button, then use the rotary "
+                    "knob or arrow keys to change the value to 300 MHz. Confirm by pressing 'OK'. Then press the 'Stop' button and adjust the value to 900 MHz. Confirm by pressing 'OK'."
                 )
             }, 
                         {
@@ -82,7 +82,7 @@ class TinySAHelper:
                 "Power on via USB or switch.\n"
                 "Set Start and Stop frequencies (e.g., 100M to 500M).\n"
                 "Choose Points (e.g., 101).\n"
-                "Select Input: Low (≤350 MHz) or High (≤960 MHz / 5.3 GHz on Ultra).\n"
+                "Select Input: Low (<=350 MHz) or High (<=960 MHz / 5.3 GHz on Ultra).\n"
                 "Use Markers to find peaks, Traces to view signal curves.\n"
                 "Enable TG (Tracking Generator) for filters or cable tests.\n"
                 "Run Level Cal under Cal for amplitude accuracy.\n"
@@ -243,7 +243,7 @@ class TinySAHelper:
             peft_model = PeftModel.from_pretrained(base_model, "./tinyllama_tinysa_lora", offload_folder=offload_path)
             peft_model = peft_model.merge_and_unload()
         except (KeyError, OSError) as e:
-            print(f"❗ Error applying LoRA adapter: {e}")
+            print(f"Error applying LoRA adapter: {e}")
             peft_model = base_model  # Fallback
 
         return tokenizer, peft_model, base_model
@@ -289,7 +289,7 @@ class TinySAHelper:
 
     def configure_tinySA(self, opt):
         nv = tinySA.tinySA(opt.device or self.getport())
-        gcf ={}
+        gcf = None
         if opt.command:
             for c in opt.command:
                 nv.send_command(c + "\r")
@@ -298,7 +298,8 @@ class TinySAHelper:
         if opt.capture:
             img = nv.capture()
             img.save(opt.capture)
-            return
+            nv.close()
+            return None
 
         if opt.start or opt.stop or opt.points:
             nv.set_frequencies(opt.start, opt.stop, opt.points)
@@ -320,14 +321,22 @@ class TinySAHelper:
             nv.writeCSV(s, opt.save)
 
         if opt.plot:
+            # Create explicit figure for thread safety BEFORE calling logmag
+            fig, ax = plt.subplots(figsize=(10, 6))
+            # Call logmag which plots to the current figure
             nv.logmag(s)
-            # Adding axis labels
-            plt.xlabel("Frequency (Hz)")  # Name for the x-axis
-            plt.ylabel("Signal strength (dBm)")  # Name for the y-axis
-
-            # Adding a title (optional)
-            plt.title("Signal strength (dBm) vs Frequency (Hz)")
-            gcf = plt.gcf()
+            # Get the current axes and set labels
+            ax = plt.gca()  # Get current axes that logmag plotted to
+            ax.set_xlabel("Frequency (Hz)")
+            ax.set_ylabel("Signal strength (dBm)")
+            # Show actual frequency range in title
+            if opt.start and opt.stop:
+                title = f"TinySA Spectrum: {opt.start/1e9:.3f} GHz to {opt.stop/1e9:.3f} GHz"
+            else:
+                title = "Signal strength (dBm) vs Frequency (Hz)"
+            ax.set_title(title)
+            ax.grid(True)
+            gcf = fig
         nv.close()
         return gcf
     
@@ -482,8 +491,8 @@ class TinySAHelper:
 
             # Use the first and last peak's frequencies to define the frequency range
             start_idx = max(all_peaks[0] - window_size, 0)
-            end_idx = min(all_peaks[-1] + window_size, len(sstr))
-            freq_range = f"{int(freq_mhz[start_idx])} - {int(freq_mhz[end_idx - 1])}"
+            end_idx = min(all_peaks[-1] + window_size, len(sstr) - 1)  # Ensure we don't exceed bounds
+            freq_range = f"{int(freq_mhz[start_idx])} - {int(freq_mhz[end_idx])}"
 
             result.append({
                 "operator": band.get('Operators', 'Unknown'),

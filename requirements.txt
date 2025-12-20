@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+#LLM / ML stack
 langchain
 langchain-community
 faiss-cpu
@@ -12,7 +12,7 @@ bitsandbytes
 accelerate
 datasets 
 peft
-=======
+
 openai
 openai_api_key_verifier
 streamlit
@@ -38,4 +38,4 @@ os
 zipfile
 re
 Keysight
->>>>>>> b5cc0200b4bffdd955f375d7a47485614330b672
+

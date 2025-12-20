@@ -81,7 +81,27 @@ class MapAPI:
                  "content": (
                      "{'plot': True, 'scan': False, 'start': 249000000.0, 'stop': 366000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
                 )
-            }, 
+            },
+            {
+                "role": "user",
+                "content": "start freq 2400MHz stop freq 2500MHz"
+            },
+            {
+                "role": "assistant",
+                 "content": (
+                     "{'plot': True, 'scan': False, 'start': 2400000000.0, 'stop': 2500000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
+                )
+            },
+            {
+                "role": "user",
+                "content": "Set start to 2.4 GHz and stop to 2.5 GHz"
+            },
+            {
+                "role": "assistant",
+                 "content": (
+                     "{'plot': True, 'scan': False, 'start': 2400000000.0, 'stop': 2500000000.0, 'points': 101, 'port': None, 'device': None, 'verbose': False, 'capture': None, 'command': None, 'save': None}"
+                )
+            },
             {
                 "role": "user",
                 "content": "How to configure tinySA"
