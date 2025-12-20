@@ -1,0 +1,84 @@
+# Environment variables and secrets
+.env
+*.pem
+*.key
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and outputs
+logs/
+outputs/
+uploads/
+*.log
+
+# Data files (output/runtime data)
+*.csv
+*.pcap
+*.json
+temp.*
+output.*
+max_signal_strengths.*
+
+# Model weights and checkpoints
+tinyllama_tinysa_lora/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+offload_dir/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Streamlit
+.streamlit/
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Temporary files
+$env
+*.tmp
+*.bak
+*.swp
