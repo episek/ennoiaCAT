@@ -154,7 +154,7 @@ class AKHelper:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Load Tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+        tokenizer = AutoTokenizer.from_pretrained(base_model_name, local_files_only=True)
         tokenizer.pad_token = tokenizer.unk_token  # Recommended for LLaMA models
         tokenizer.use_default_system_prompt = False  # Avoid auto-formatting if needed
 
@@ -162,7 +162,8 @@ class AKHelper:
         base_model = AutoModelForCausalLM.from_pretrained(
             base_model_name,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            device_map={"": device}
+            device_map={"": device},
+            local_files_only=True
         )
         print(f"Base model loaded on {device}.")
 
@@ -230,7 +231,7 @@ class AKHelper:
 
     def load_model(self, device):
         compute_dtype = torch.float16 if device == "cuda" else torch.float32
-        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=True)
         tokenizer.pad_token = tokenizer.eos_token
 
         offload_path = "offload_dir"
@@ -241,7 +242,8 @@ class AKHelper:
             device_map="auto",
             offload_folder=offload_path,
             torch_dtype=compute_dtype,
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
+            local_files_only=True
         )
         try:
             peft_model = PeftModel.from_pretrained(base_model, "./tinyllama_AK_lora", offload_folder=offload_path)
