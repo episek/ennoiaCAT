@@ -50,18 +50,28 @@ uploads/
 # Data files (output/runtime data)
 *.csv
 *.pcap
+*.pcapng
 *.json
+*.jsonl
+*.bin
+*.exe
+*.zip
 temp.*
 output.*
 max_signal_strengths.*
 
 # Model weights and checkpoints
 tinyllama_tinysa_lora/
+tinyllama-onnx/
+tinyllama-onnx-nocache/
 *.pt
 *.pth
 *.ckpt
 *.safetensors
+*.onnx
+*.onnx_data
 offload_dir/
+vectorstore/
 
 # Jupyter Notebooks
 .ipynb_checkpoints/

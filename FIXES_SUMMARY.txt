@@ -1,0 +1,104 @@
+================================================================================
+FREQUENCY PARSING FIX - SUMMARY OF CHANGES
+================================================================================
+
+ISSUE: "start freq 2400MHz stop freq 2500MHz" was being parsed as 240MHz-250MHz
+       Unicode emojis causing 'charmap' codec errors on Windows console
+
+================================================================================
+FIXES IMPLEMENTED:
+================================================================================
+
+1. REMOVED UNICODE EMOJIS FROM PRINT STATEMENTS
+   File: ennoiaCAT_Consolidated.py (Line 1152, 1155)
+   - Changed: "⚠️ Correcting start:" → "WARNING: Correcting start:"
+   - Changed: "⚠️ Correcting stop:" → "WARNING: Correcting stop:"
+   - Status: FIXED ✓
+
+2. ADDED WiFi BAND FEW-SHOT TRAINING EXAMPLES
+   File: map_api.py (Lines 85-104)
+   - Added: "start freq 2400MHz stop freq 2500MHz" → 2400000000.0, 2500000000.0
+   - Added: "Set start to 2.4 GHz and stop to 2.5 GHz" → 2400000000.0, 2500000000.0
+   - Purpose: Train AI to correctly parse 4-digit MHz values
+   - Status: IMPLEMENTED ✓
+
+3. IMPROVED FREQUENCY VALIDATION LOGIC
+   File: ennoiaCAT_Consolidated.py (Lines 1143-1162)
+   - OLD: Checked all frequencies against both start AND stop (incorrect)
+   - NEW: First frequency → start, Second frequency → stop (correct)
+   - Detects when AI extracts 240 instead of 2400
+   - Auto-corrects: 240MHz → 2400MHz, 250MHz → 2500MHz
+   - Status: FIXED ✓
+
+4. ENHANCED WiFi SCANNER TRIGGER
+   File: ennoiaCAT_Consolidated.py (Lines 1297-1320)
+   - Uses configured_stop >= 2.39e9 to trigger WiFi scan
+   - No longer relies solely on CSV data
+   - Shows debug message when WiFi scan is triggered
+   - Status: IMPROVED ✓
+
+================================================================================
+TESTS PERFORMED:
+================================================================================
+
+✓ parse_frequency('2400MHz') = 2400000000.0 Hz
+✓ parse_frequency('2.4 GHz') = 2400000000.0 Hz
+✓ parse_frequency('850 MHz') = 850000000.0 Hz
+✓ Validation corrects: 240MHz → 2400MHz
+✓ Validation corrects: 250MHz → 2500MHz
+✓ WiFi scanner triggers correctly for 2.4-2.5 GHz range
+✓ No Unicode errors in print statements
+✓ Module imports work without errors
+✓ Few-shot examples loaded (12 total)
+✓ 2400MHz example present in training data
+✓ Streamlit runs without crashes
+
+================================================================================
+VERIFICATION:
+================================================================================
+
+Command: python test_freq_parse.py
+Result: ALL TESTS PASSED!
+
+Integration Test:
+  - map_api imported successfully
+  - Few-shot examples loaded: 12 examples
+  - Found 2400MHz example
+  - All integration tests passed!
+
+Streamlit Status:
+  - Running at: http://localhost:8504
+  - No Unicode errors
+  - No crashes
+
+================================================================================
+EXPECTED BEHAVIOR NOW:
+================================================================================
+
+When you type: "start freq 2400MHz stop freq 2500MHz"
+
+The system will:
+1. AI extracts parameters (may get 240/250 or 2400/2500)
+2. Validation detects if wrong and auto-corrects
+3. Configures tinySA with: 2.4 GHz - 2.5 GHz
+4. Displays spectrum plot with correct frequency range
+5. Triggers WiFi scanner (stop freq >= 2.39 GHz)
+6. Shows WiFi networks with SSID, signal, channel, band
+7. Shows cellular operator table if applicable
+8. Displays timer with elapsed time
+
+All without Unicode errors!
+
+================================================================================
+FILES MODIFIED:
+================================================================================
+
+1. ennoiaCAT_Consolidated.py
+   - Removed Unicode emojis from print()
+   - Fixed validation logic (first freq→start, second→stop)
+   - Enhanced WiFi trigger logic
+
+2. map_api.py
+   - Added WiFi band few-shot examples (2400MHz, 2.4GHz)
+
+================================================================================

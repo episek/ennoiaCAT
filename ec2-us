@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Operator Table Builder/Trainer (EC2 backend)
+- Input:  --location "City, Country"  (e.g., "Dublin, Ireland")
+         [--out_dir /tmp/ennoia_tables]
+         [--force_train]
+- Output: JSON table with one-operator-per-row written to: <out_dir>/operator_table_<city>_<country>.json
+- Behavior:
+  1) Use curated provider for known countries (IE/UK/US/FR/DE/ES/IT), returning rows already split per operator.
+  2) Augment with GSMA / ComReg if env vars are configured.
+  3) If no rows → bootstrap a template with NOTE "Bootstrapped (training pending)".
+  4) Normalize rows to one operator per row, aligned UL/DL/BW/Tech/3GPP.
+  5) If table is bootstrapped → attempt regulator training/enrichment now. If succeeds, removes NOTE.
+  6) Print absolute path to stdout (last line).
+"""
+
+from __future__ import annotations
+import argparse
+import json
+import os
+import re
+import sys
+from typing import List, Dict, Tuple, Optional
+
+import pandas as pd
+import requests
+
+# --------------------------- utils ---------------------------
+
+def _norm_name(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", (s or "").strip().lower()).strip("_")
+
+def parse_location(location: str) -> Tuple[str, str]:
+    parts = [p.strip() for p in (location or "").split(",") if p.strip()]
+    if not parts:
+        raise ValueError("location must be 'City, Country' (e.g., 'Dublin, Ireland')")
+    city = parts[0]
+    country = parts[-1] if len(parts) > 1 else ""
+    return city, country
+
+def _rng(a, b) -> str:
+    try:
+        a = float(a); b = float(b)
+    except Exception:
+        return ""
+    lo, hi = sorted((a, b))
+    def fmt(x):
+        if abs(x - int(x)) < 1e-9:
+            return str(int(x))
+        return f"{x}"
+    return f"{fmt(lo)} - {fmt(hi)}"
+
+def _row(label, gpp, ul1, ul2, dl1, dl2, bw, tech, operator, note: str = "") -> Dict:
+    r = {
+        "Band ": label,
+        "3GPP Band": gpp,
+        "Uplink Frequency (MHz)": _rng(ul1, ul2),
+        "Downlink Frequency (MHz)": _rng(dl1, dl2),
+        "Bandwidth": str(bw) if bw is not None else "",
+        "Technology": tech or "",
+        "Operator": operator or "",
+    }
+    if note:
+        r["Note"] = note
+    return r
+
+def _explode_operators_and_ranges(rows: List[Dict]) -> List[Dict]:
+    """Ensure one operator per row. If a row lists multiple operators, split into multiple rows
+    keeping the same UL/DL ranges (shared allocation assumptions).
+    """
+    out: List[Dict] = []
+    for r in rows or []:
+        ops = r.get("Operators") or r.get("Operator") or ""
+        if isinstance(ops, list):
+            op_list = ops
+        else:
+            op_list = [o.strip() for o in str(ops).split(",") if o.strip()]
+        if not op_list:
+            op_list = ["Unknown"]
+
+        for op in op_list:
+            nr = dict(r)  # shallow copy
+            nr["Operator"] = op
+            nr.pop("Operators", None)
+            out.append(nr)
+    return out
+
+# --------------------------- augmentation stubs ---------------------------
+
+def augment_with_gsma(rows: List[Dict], country: str) -> List[Dict]:
+    """Hook point for GSMA Device DB / allocation APIs. No-ops if not configured."""
+    # Example: GSMA_API_KEY env var, then query your integration here.
+    # Keep rows unchanged if no integration is set.
+    return rows
+
+def augment_with_comreg(rows: List[Dict], country: str) -> List[Dict]:
+    """Ireland-specific augmentation via ComReg open data if COMREG_DATASET_URL is set."""
+    if not country or country.strip().lower() not in ("ireland", "ie"):
+        return rows
+    url = os.getenv("COMREG_DATASET_URL")
+    if not url:
+        return rows
+    try:
+        df = _fetch_csv_or_json(url)
+        extra = _rows_from_regulator_df(df, country_hint=country)
+        if extra:
+            rows = rows + extra
+    except Exception as e:
+        print(f"comreg_augment_error: {e}", file=sys.stderr)
+    return rows
+
+# --------------------------- regulator fetch / training ---------------------------
+
+def _fetch_csv_or_json(url: str) -> pd.DataFrame:
+    r = requests.get(url, timeout=15)
+    r.raise_for_status()
+    ctype = r.headers.get("content-type", "").lower()
+    if "json" in ctype or url.lower().endswith(".json"):
+        try:
+            return pd.json_normalize(r.json())
+        except Exception:
+            return pd.read_json(pd.io.common.StringIO(r.text))
+    # fallback to CSV
+    return pd.read_csv(pd.io.common.StringIO(r.text))
+
+def _rows_from_regulator_df(df: pd.DataFrame, *, country_hint: str) -> List[Dict]:
+    rows: List[Dict] = []
+    if df is None or df.empty:
+        return rows
+
+    def pick(*names):
+        for n in names:
+            if n in df.columns:
+                return n
+        return None
+
+    col_band   = pick("Band", "BandLabel", "Label", "Freq Band", "Frequency Band", "Range")
+    col_3gpp   = pick("3GPP", "GPP", "Band3GPP", "GPP Band", "3GPP Band", "Band ID", "Band ID (3GPP)")
+    col_ul_lo  = pick("UL_Low", "Uplink_Low_MHz", "Uplink_Low", "UL_L", "UL Start (MHz)", "Uplink Start")
+    col_ul_hi  = pick("UL_High","Uplink_High_MHz","Uplink_High","UL_H","UL End (MHz)","Uplink End")
+    col_dl_lo  = pick("DL_Low", "Downlink_Low_MHz", "Downlink_Low", "DL_L", "DL Start (MHz)", "Downlink Start")
+    col_dl_hi  = pick("DL_High","Downlink_High_MHz","Downlink_High","DL_H","DL End (MHz)","Downlink End")
+    col_bw     = pick("BW", "Bandwidth", "Channel BW", "Alloted BW", "Block Size", "Width (MHz)")
+    col_tech   = pick("Tech", "Technology", "RAT", "System", "Mode")
+    col_ops    = pick("Operator", "Operators", "Licensee", "Licensees", "Assignee", "Holder")
+
+    def fnum(x) -> Optional[float]:
+        try: return float(x)
+        except Exception: return None
+
+    for _, r in df.iterrows():
+        band = str(r.get(col_band) if col_band else "Unknown") or "Unknown"
+        gpp  = str(r.get(col_3gpp) if col_3gpp else "Unknown") or "Unknown"
+        ul1 = fnum(r.get(col_ul_lo)) if col_ul_lo else None
+        ul2 = fnum(r.get(col_ul_hi)) if col_ul_hi else None
+        dl1 = fnum(r.get(col_dl_lo)) if col_dl_lo else None
+        dl2 = fnum(r.get(col_dl_hi)) if col_dl_hi else None
+        if None in (ul1, ul2, dl1, dl2):
+            continue
+        bw   = str(r.get(col_bw) if col_bw else "Varies") or "Varies"
+        tech = str(r.get(col_tech) if col_tech else "LTE/NR") or "LTE/NR"
+        ops  = r.get(col_ops) if col_ops else "Various"
+        if isinstance(ops, str):
+            ops = [o.strip() for o in ops.split(",") if o.strip()]
+        if not ops:
+            ops = ["Various"]
+        for op in ops:
+            rows.append(_row(band, gpp, ul1, ul2, dl1, dl2, bw, tech, op))
+    return rows
+
+def fetch_from_regulator(country: str) -> List[Dict]:
+    """Use env-configured regulator URLs for richer data."""
+    key = (country or "").strip().lower()
+    env_map = {
+        "france": "FR_REGULATOR_URL", "fr": "FR_REGULATOR_URL",
+        "germany": "DE_REGULATOR_URL", "de": "DE_REGULATOR_URL", "deutschland": "DE_REGULATOR_URL",
+        "spain": "ES_REGULATOR_URL", "es": "ES_REGULATOR_URL",
+        "italy": "IT_REGULATOR_URL", "it": "IT_REGULATOR_URL",
+        "united kingdom": "UK_REGULATOR_URL", "uk": "UK_REGULATOR_URL", "great britain": "UK_REGULATOR_URL", "gb": "UK_REGULATOR_URL",
+        "united states": "US_REGULATOR_URL", "usa": "US_REGULATOR_URL", "us": "US_REGULATOR_URL",
+        "ireland": "IE_REGULATOR_URL", "ie": "IE_REGULATOR_URL",
+    }
+    url = os.getenv(env_map.get(key, ""), None) or os.getenv("GENERIC_REGULATOR_URL")
+    if not url:
+        return []
+    try:
+        df = _fetch_csv_or_json(url)
+        return _rows_from_regulator_df(df, country_hint=country)
+    except Exception as e:
+        print(f"regulator_fetch_error[{country}]: {e}", file=sys.stderr)
+        return []
+
+def is_bootstrapped(rows: List[Dict]) -> bool:
+    if not rows:
+        return True
+    return any(str(r.get("Note","")).lower().startswith("bootstrapped") for r in rows)
+
+def try_train_enrich_rows(rows: List[Dict], *, city: str, country: str) -> List[Dict]:
+    """If rows are bootstrapped, attempt enrichment via regulator feeds."""
+    if not is_bootstrapped(rows):
+        return rows
+
+    improved = list(rows)
+    extra = fetch_from_regulator(country)
+    if extra:
+        def sig(rw):
+            return (rw.get("3GPP Band",""), rw.get("Operator",""), rw.get("Uplink Frequency (MHz)",""))
+        have = {sig(x) for x in improved}
+        added = 0
+        for e in extra:
+            if sig(e) not in have:
+                improved.append(e); have.add(sig(e)); added += 1
+        if added:
+            print(f"trainer: added {added} rows from regulator for {country}", file=sys.stderr)
+        improved = _explode_operators_and_ranges(improved)
+
+        if not is_bootstrapped(improved):
+            # Remove Note if all rows are now trained-ish
+            for r in improved:
+                if "Note" in r and str(r["Note"]).lower().startswith("bootstrapped"):
+                    r.pop("Note", None)
+            print(f"trainer: training/enrichment completed for {city}, {country}", file=sys.stderr)
+            return improved
+
+    print(f"trainer: leaving bootstrapped for {city}, {country} (no live data)", file=sys.stderr)
+    return rows
+
+# --------------------------- curated providers ---------------------------
+
+def _ie_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    # n28 / B28, split per operator
+    rows += [_row("700 MHz", "Band 28 / n28", 703,718, 758,773, "10–15 MHz", "LTE/NR", "Vodafone"),
+             _row("700 MHz", "Band 28 / n28", 718,733, 773,788, "10–15 MHz", "LTE/NR", "Three"),
+             _row("700 MHz", "Band 28 / n28", 733,748, 788,803, "10–15 MHz", "LTE/NR", "eir")]
+    # n20 / B20
+    rows += [_row("800 MHz", "Band 20 / n20", 842,852, 801,811, "5–10 MHz", "LTE/NR DSS", "Vodafone"),
+             _row("800 MHz", "Band 20 / n20", 852,862, 811,821, "5–10 MHz", "LTE/NR DSS", "Three"),
+             _row("800 MHz", "Band 20 / n20", 832,842, 791,801, "5–10 MHz", "LTE/NR DSS", "eir")]
+    # B8 / n8
+    rows += [_row("900 MHz", "Band 8 / n8", 890,900, 935,945, "5–10 MHz", "LTE", "Vodafone"),
+             _row("900 MHz", "Band 8 / n8", 900,910, 945,955, "5–10 MHz", "LTE", "Three"),
+             _row("900 MHz", "Band 8 / n8", 910,915, 955,960, "5 MHz", "LTE", "eir")]
+    # B3 / n3
+    rows += [_row("1800 MHz", "Band 3 / n3", 1710,1735, 1805,1830, "25 MHz", "LTE/NR DSS", "Vodafone"),
+             _row("1800 MHz", "Band 3 / n3", 1735,1760, 1830,1855, "25 MHz", "LTE/NR DSS", "Three"),
+             _row("1800 MHz", "Band 3 / n3", 1760,1785, 1855,1880, "25 MHz", "LTE/NR DSS", "eir")]
+    # B1 / n1
+    rows += [_row("2100 MHz", "Band 1 / n1", 1925,1945, 2115,2135, "20 MHz", "LTE/NR DSS", "Vodafone"),
+             _row("2100 MHz", "Band 1 / n1", 1945,1965, 2135,2155, "20 MHz", "LTE/NR DSS", "Three"),
+             _row("2100 MHz", "Band 1 / n1", 1965,1980, 2155,2170, "15 MHz", "LTE/NR DSS", "eir")]
+    # B7 (FDD)
+    rows += [_row("2600 MHz", "Band 7", 2500,2520, 2620,2640, "20 MHz", "LTE", "Three"),
+             _row("2600 MHz", "Band 7", 2520,2540, 2640,2660, "20 MHz", "LTE", "Vodafone")]
+    # n78 (TDD)
+    rows += [_row("3.6 GHz", "n78 (3.4–3.8 GHz)", 3460,3560, 3460,3560, "100 MHz", "5G NR (TDD)", "Vodafone"),
+             _row("3.6 GHz", "n78 (3.4–3.8 GHz)", 3480,3660, 3480,3660, "180 MHz", "5G NR (TDD)", "Three"),
+             _row("3.6 GHz", "n78 (3.4–3.8 GHz)", 3560,3660, 3560,3660, "100 MHz", "5G NR (TDD)", "eir")]
+    return rows
+
+def _gb_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    # For simplicity, UK allocations generally shared; split rows per operator same ranges.
+    bases = [
+        ("700 MHz", "Band 28 / n28", 703,733, 758,788, "30 MHz", "LTE/NR", ["EE","Vodafone","O2","Three"]),
+        ("800 MHz", "Band 20 / n20", 832,862, 791,821, "30 MHz", "LTE",    ["EE","Vodafone","O2","Three"]),
+        ("1800 MHz", "Band 3 / n3", 1710,1785, 1805,1880, "75 MHz","LTE/NR DSS",["EE","Vodafone","O2","Three"]),
+        ("2100 MHz", "Band 1 / n1", 1920,1980, 2110,2170, "60 MHz","LTE/NR DSS",["EE","Vodafone","O2","Three"]),
+        ("2600 MHz", "Band 7/38",   2500,2570, 2620,2690, "FDD/TDD","LTE/NR",["EE","Vodafone","O2","Three"]),
+        ("3.4–3.8 GHz", "n77/n78",  3400,3800, 3400,3800, "40–100 MHz","5G NR (TDD)",["EE","Vodafone","O2","Three"]),
+    ]
+    for b in bases:
+        for op in b[-1]:
+            rows.append(_row(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], op))
+    return rows
+
+def _us_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    rows += [_row("700 MHz", "Band 12/13/14/17/29 / n12/n14/n29", 699,716, 729,746, "Varies", "LTE/NR", "AT&T"),
+             _row("700 MHz", "Band 12/13/14/17/29 / n12/n14/n29", 699,716, 729,746, "Varies", "LTE/NR", "Verizon")]
+    rows += [_row("850 MHz", "Band 5 / n5", 824,849, 869,894, "Varies", "LTE/NR DSS", "AT&T"),
+             _row("850 MHz", "Band 5 / n5", 824,849, 869,894, "Varies", "LTE/NR DSS", "Verizon")]
+    rows += [_row("PCS 1900", "Band 2 / n2", 1850,1915, 1930,1995, "Varies", "LTE/NR", "AT&T"),
+             _row("PCS 1900", "Band 2 / n2", 1850,1915, 1930,1995, "Varies", "LTE/NR", "T-Mobile"),
+             _row("PCS 1900", "Band 2 / n2", 1850,1915, 1930,1995, "Varies", "LTE/NR", "Verizon")]
+    rows += [_row("AWS-1/3", "Band 4/66 / n66", 1710,1780, 2110,2200, "Varies", "LTE/NR", "AT&T"),
+             _row("AWS-1/3", "Band 4/66 / n66", 1710,1780, 2110,2200, "Varies", "LTE/NR", "T-Mobile"),
+             _row("AWS-1/3", "Band 4/66 / n66", 1710,1780, 2110,2200, "Varies", "LTE/NR", "Verizon"),
+             _row("AWS-1/3", "Band 4/66 / n66", 1710,1780, 2110,2200, "Varies", "LTE/NR", "Dish")]
+    rows += [_row("CBRS", "n48 (3550–3700)", 3550,3700, 3550,3700, "10–40 MHz", "LTE/NR (TDD)", "PAL/GAA")]
+    rows += [_row("C-band", "n77 (3700–3980)", 3700,3980, 3700,3980, "up to 140 MHz", "5G NR (TDD)", "AT&T"),
+             _row("C-band", "n77 (3700–3980)", 3700,3980, 3700,3980, "up to 140 MHz", "5G NR (TDD)", "Verizon")]
+    rows += [_row("mmWave 24–39 GHz", "n258/n260/n261", 24250,39950, 24250,39950, "Varies", "5G NR (TDD)", "Various")]
+    return rows
+
+def _fr_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    # Simplified split by major FR operators; refine via regulator later.
+    ops = ["Orange", "SFR", "Bouygues", "Free Mobile"]
+    bases = [
+        ("700 MHz", "Band 28 / n28", 703,733, 758,788, "10–20 MHz", "LTE/NR"),
+        ("800 MHz", "Band 20 / n20", 832,862, 791,821, "10–20 MHz", "LTE/NR"),
+        ("1800 MHz", "Band 3 / n3", 1710,1785, 1805,1880, "Varies", "LTE/NR"),
+        ("2100 MHz", "Band 1 / n1", 1920,1980, 2110,2170, "Varies", "LTE/NR"),
+        ("2600 MHz", "Band 7 / 38", 2500,2570, 2620,2690, "Varies", "LTE/NR"),
+        ("3.4–3.8 GHz", "n77/n78", 3400,3800, 3400,3800, "40–100 MHz", "5G NR (TDD)"),
+    ]
+    for b in bases:
+        for op in ops:
+            rows.append(_row(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], op))
+    return rows
+
+def _de_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    ops = ["Telekom", "Vodafone", "O2 / Telefónica"]
+    bases = [
+        ("700 MHz", "Band 28 / n28", 703,733, 758,788, "Varies", "LTE/NR"),
+        ("800 MHz", "Band 20 / n20", 832,862, 791,821, "Varies", "LTE/NR"),
+        ("900 MHz", "Band 8 / n8",  880,915,  925,960,  "Varies", "LTE/NR"),
+        ("1800 MHz", "Band 3 / n3", 1710,1785,1805,1880, "Varies", "LTE/NR"),
+        ("2100 MHz", "Band 1 / n1", 1920,1980,2110,2170, "Varies", "LTE/NR"),
+        ("2600 MHz", "Band 7 / 38", 2500,2570,2620,2690, "Varies", "LTE/NR"),
+        ("3.4–3.8 GHz", "n78",      3400,3800,3400,3800, "40–100 MHz", "5G NR (TDD)"),
+    ]
+    for b in bases:
+        for op in ops:
+            rows.append(_row(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], op))
+    return rows
+
+def _es_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    ops = ["Movistar", "Vodafone", "Orange", "Yoigo"]
+    bases = [
+        ("700 MHz", "Band 28 / n28", 703,733, 758,788, "Varies", "LTE/NR"),
+        ("800 MHz", "Band 20 / n20", 832,862, 791,821, "Varies", "LTE/NR"),
+        ("900 MHz", "Band 8 / n8",  880,915,  925,960,  "Varies", "LTE/NR"),
+        ("1800 MHz", "Band 3 / n3", 1710,1785,1805,1880, "Varies", "LTE/NR"),
+        ("2100 MHz", "Band 1 / n1", 1920,1980,2110,2170, "Varies", "LTE/NR"),
+        ("2600 MHz", "Band 7 / 38", 2500,2570,2620,2690, "Varies", "LTE/NR"),
+        ("3.4–3.8 GHz", "n78",      3400,3800,3400,3800, "40–100 MHz", "5G NR (TDD)"),
+    ]
+    for b in bases:
+        for op in ops:
+            rows.append(_row(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], op))
+    return rows
+
+def _it_provider(city: str) -> List[Dict]:
+    rows: List[Dict] = []
+    ops = ["TIM", "Vodafone", "WindTre", "Iliad"]
+    bases = [
+        ("700 MHz", "Band 28 / n28", 703,733, 758,788, "Varies", "LTE/NR"),
+        ("800 MHz", "Band 20 / n20", 832,862, 791,821, "Varies", "LTE/NR"),
+        ("900 MHz", "Band 8 / n8",  880,915,  925,960,  "Varies", "LTE/NR"),
+        ("1800 MHz", "Band 3 / n3", 1710,1785,1805,1880, "Varies", "LTE/NR"),
+        ("2100 MHz", "Band 1 / n1", 1920,1980,2110,2170, "Varies", "LTE/NR"),
+        ("2600 MHz", "Band 7 / 38", 2500,2570,2620,2690, "Varies", "LTE/NR"),
+        ("3.4–3.8 GHz", "n78",      3400,3800,3400,3800, "40–100 MHz", "5G NR (TDD)"),
+    ]
+    for b in bases:
+        for op in ops:
+            rows.append(_row(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], op))
+    return rows
+
+# Country key → provider function
+PROVIDERS = {
+    "ireland": _ie_provider, "ie": _ie_provider,
+    "united kingdom": _gb_provider, "uk": _gb_provider, "gb": _gb_provider, "great britain": _gb_provider,
+    "united states": _us_provider, "usa": _us_provider, "us": _us_provider,
+    "france": _fr_provider, "fr": _fr_provider,
+    "germany": _de_provider, "deutschland": _de_provider, "de": _de_provider,
+    "spain": _es_provider, "es": _es_provider,
+    "italy": _it_provider, "it": _it_provider,
+}
+
+# --------------------------- bootstrap template ---------------------------
+
+def bootstrap_for_unknown_country(country: str) -> List[Dict]:
+    """Produce a usable table immediately for unknown countries, flagged for training."""
+    note = "Bootstrapped (training pending)"
+    # Generic EU-like baseline
+    eu_bases = [
+        ("700 MHz",  "Band 28 / n28", 703,733, 758,788, "Varies", "LTE/NR"),
+        ("800 MHz",  "Band 20 / n20", 832,862, 791,821, "Varies", "LTE/NR"),
+        ("900 MHz",  "Band 8 / n8",   880,915,  925,960,  "Varies", "LTE/NR"),
+        ("1800 MHz", "Band 3 / n3",   1710,1785,1805,1880,"Varies", "LTE/NR"),
+        ("2100 MHz", "Band 1 / n1",   1920,1980,2110,2170,"Varies", "LTE/NR"),
+        ("2600 MHz", "Band 7 / 38",   2500,2570,2620,2690,"Varies", "LTE/NR"),
+        ("3.4–3.8 GHz","n78",         3400,3800,3400,3800,"40–100 MHz","5G NR (TDD)"),
+    ]
+    rows: List[Dict] = []
+    for base in eu_bases:
+        # Use 'Various' to indicate unknown operator at bootstrap
+        rows.append(_row(base[0], base[1], base[2], base[3], base[4], base[5], base[6], base[7], "Various", note))
+    return rows
+
+# --------------------------- main build ---------------------------
+
+def build_rows_for_location(location: str) -> List[Dict]:
+    city, country = parse_location(location)
+    key = (country or "").strip().lower()
+    prov = PROVIDERS.get(key)
+    rows: List[Dict] = []
+
+    # 0) curated if available
+    if prov is not None:
+        rows = prov(city)
+
+    # 1) augmentations
+    rows = augment_with_gsma(rows, country)
+    rows = augment_with_comreg(rows, country)
+
+    # 2) bootstrap if still empty
+    if not rows:
+        print(f"no_provider_for: {country}; bootstrapping template", file=sys.stderr)
+        rows = bootstrap_for_unknown_country(country)
+
+    # 3) normalize to one-operator-per-row
+    rows = _explode_operators_and_ranges(rows)
+
+    # 4) try training if bootstrapped
+    if is_bootstrapped(rows):
+        rows = try_train_enrich_rows(rows, city=city, country=country)
+
+    return rows
+
+# --------------------------- CLI ---------------------------
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--location", required=True, help='e.g. "Dublin, Ireland"')
+    ap.add_argument("--out_dir", default="/tmp/ennoia_tables")
+    ap.add_argument("--force_train", action="store_true", help="Force enrichment even if not bootstrapped.")
+    args = ap.parse_args()
+
+    os.makedirs(args.out_dir, exist_ok=True)
+
+    rows = build_rows_for_location(args.location)
+
+    if args.force_train and rows:
+        # Optional manual force
+        city, country = parse_location(args.location)
+        rows = try_train_enrich_rows(rows, city=city, country=country)
+
+    city, country = parse_location(args.location)
+    out_name = f"operator_table_{_norm_name(city)}_{_norm_name(country)}.json"
+    out_path = os.path.abspath(os.path.join(args.out_dir, out_name))
+
+    # Ensure deterministic column order
+    col_order = ["Band ", "3GPP Band", "Uplink Frequency (MHz)", "Downlink Frequency (MHz)",
+                 "Bandwidth", "Technology", "Operator", "Note"]
+    df = pd.DataFrame(rows)
+    for c in col_order:
+        if c not in df.columns:
+            df[c] = ""
+    df = df[col_order]
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(df.to_dict(orient="records"), f, indent=2, ensure_ascii=False)
+
+    # IMPORTANT: print absolute path (used by Streamlit SFTP fetch)
+    print(out_path)
+
+if __name__ == "__main__":
+    main()

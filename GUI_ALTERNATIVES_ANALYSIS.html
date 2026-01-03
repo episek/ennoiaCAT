@@ -1,0 +1,1301 @@
+<h1>GUI Framework Analysis for EnnoiaCAT Agentic Platform</h1>
+<p><strong>Document Version:</strong> 1.0
+<strong>Date:</strong> 2025-12-22
+<strong>Project:</strong> EnnoiaCAT Multi-Instrument Test Platform
+<strong>Issue:</strong> Streamlit Limitations for Agentic Framework &amp; PyShark Integration</p>
+<hr />
+<h2>Executive Summary</h2>
+<p><strong>Verdict: Streamlit is NOT suitable for the full agentic framework transformation.</strong></p>
+<p>Your observation is correct - Streamlit has fundamental architectural limitations that conflict with:
+1. <strong>Real-time packet capture</strong> (PyShark/Scapy)
+2. <strong>Agentic frameworks</strong> (background agent execution, event-driven architecture)
+3. <strong>Long-running processes</strong> (instrument control, continuous monitoring)
+4. <strong>WebSocket/streaming communication</strong> (real-time updates)</p>
+<p><strong>Evidence in Your Codebase:</strong>
+- You've already created <code>flask_pcap_backend.py</code> as a workaround for PyShark limitations
+- Flask backend handles packet capture while Streamlit provides UI
+- This split architecture indicates existing Streamlit pain points</p>
+<p><strong>Recommendation:</strong> Migrate to a modern async-capable web framework (FastAPI + React/Vue, or Gradio for rapid prototyping).</p>
+<hr />
+<h2>Table of Contents</h2>
+<ol>
+<li><a href="#1-streamlit-limitations---detailed-analysis">Streamlit Limitations - Detailed Analysis</a></li>
+<li><a href="#2-pyshark-integration-issues">PyShark Integration Issues</a></li>
+<li><a href="#3-alternative-gui-frameworks">Alternative GUI Frameworks</a></li>
+<li><a href="#4-recommended-solution">Recommended Solution</a></li>
+<li><a href="#5-migration-strategy">Migration Strategy</a></li>
+<li><a href="#6-code-examples">Code Examples</a></li>
+<li><a href="#7-decision-matrix">Decision Matrix</a></li>
+</ol>
+<hr />
+<h2>1. Streamlit Limitations - Detailed Analysis</h2>
+<h3>1.1 Fundamental Execution Model Problem</h3>
+<p><strong>Streamlit's Script Rerun Model:</strong></p>
+<pre><code class="language-python"># Every user interaction reruns the ENTIRE script from top to bottom
+import streamlit as st
+
+# This gets executed on EVERY button click, slider change, etc.
+data = load_heavy_model()  # ← Reloaded every time!
+st.button(&quot;Click me&quot;)       # ← Entire script reruns
+</code></pre>
+<p><strong>Problems for Agentic Framework:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Why It Matters</th>
+<th>Impact on EnnoiaCAT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Script Reruns</strong></td>
+<td>Entire Python script reruns on every interaction</td>
+<td>Agents get reinitialized, losing state</td>
+</tr>
+<tr>
+<td><strong>No Background Tasks</strong></td>
+<td>Can't run tasks independently of UI</td>
+<td>Agents can't run autonomously</td>
+</tr>
+<tr>
+<td><strong>Session State Limitations</strong></td>
+<td>State stored in dict, not true object persistence</td>
+<td>Agent memory/context gets lost</td>
+</tr>
+<tr>
+<td><strong>Synchronous Only</strong></td>
+<td>Blocking execution model</td>
+<td>Can't handle async agent communication</td>
+</tr>
+<tr>
+<td><strong>No WebSockets</strong></td>
+<td>Limited to HTTP polling</td>
+<td>No real-time agent status updates</td>
+</tr>
+</tbody>
+</table>
+<h3>1.2 Specific Agentic Framework Conflicts</h3>
+<h4><strong>Problem 1: Agent Event Loops</strong></h4>
+<p><strong>What You Need:</strong></p>
+<pre><code class="language-python"># Agentic framework needs continuous agent execution
+class BaseAgent:
+    async def start(self):
+        while True:  # ← Continuous event loop
+            task = await self.task_queue.get()
+            await self.execute_task(task)
+</code></pre>
+<p><strong>Streamlit's Reality:</strong></p>
+<pre><code class="language-python"># Streamlit reruns script, killing any running loops
+import streamlit as st
+
+# This loop will be INTERRUPTED on every user interaction
+for task in agent.task_queue:  # ← Gets killed on rerun
+    process(task)
+</code></pre>
+<p><strong>Workaround (Ugly):</strong></p>
+<pre><code class="language-python"># You'd have to use background threads + session state
+import threading
+import streamlit as st
+
+if &quot;agent_thread&quot; not in st.session_state:
+    st.session_state.agent_thread = threading.Thread(target=agent.start)
+    st.session_state.agent_thread.daemon = True
+    st.session_state.agent_thread.start()
+
+# But communication between thread and UI is painful
+</code></pre>
+<h4><strong>Problem 2: Message Bus &amp; Pub/Sub</strong></h4>
+<p><strong>What You Need:</strong></p>
+<pre><code class="language-python"># Agent message bus with real-time updates
+class MessageBus:
+    async def publish(self, topic: str, message: dict):
+        for subscriber in self.subscribers[topic]:
+            await subscriber(message)  # ← Async callback
+
+# UI should react to messages in real-time
+</code></pre>
+<p><strong>Streamlit's Reality:</strong></p>
+<pre><code class="language-python"># No way to trigger UI updates from external events
+# Must poll or manually refresh
+import streamlit as st
+
+# User must click &quot;Refresh&quot; button to see agent updates
+if st.button(&quot;Refresh Agent Status&quot;):
+    status = get_agent_status()  # ← Polling only
+    st.write(status)
+</code></pre>
+<h4><strong>Problem 3: MCP Server Integration</strong></h4>
+<p><strong>What You Need:</strong></p>
+<pre><code class="language-python"># MCP uses stdio/WebSocket for persistent connections
+async def connect_mcp_server():
+    session = ClientSession(stdio_params)
+    await session.initialize()  # ← Needs persistent connection
+    return session
+</code></pre>
+<p><strong>Streamlit's Reality:</strong></p>
+<pre><code class="language-python"># Connection gets reset on every script rerun
+import streamlit as st
+
+@st.cache_resource  # ← Hacky workaround
+def get_mcp_session():
+    # But this breaks if connection drops
+    return create_mcp_session()
+</code></pre>
+<h3>1.3 Performance Issues</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Streamlit</th>
+<th>Modern Framework (FastAPI + React)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Initial Load Time</strong></td>
+<td>2-5 seconds</td>
+<td>0.5-1 second</td>
+</tr>
+<tr>
+<td><strong>Rerender Time</strong></td>
+<td>0.5-2 seconds (full script)</td>
+<td>0.05-0.1 seconds (component only)</td>
+</tr>
+<tr>
+<td><strong>WebSocket Support</strong></td>
+<td>Limited (via custom components)</td>
+<td>Native</td>
+</tr>
+<tr>
+<td><strong>Concurrent Users</strong></td>
+<td>10-50 (CPU-bound)</td>
+<td>1000+ (async I/O)</td>
+</tr>
+<tr>
+<td><strong>Memory per Session</strong></td>
+<td>50-200 MB</td>
+<td>5-20 MB</td>
+</tr>
+</tbody>
+</table>
+<h3>1.4 What Streamlit IS Good For</h3>
+<p><strong>Streamlit excels at:</strong>
+- ✅ Rapid prototyping (&lt; 1 week projects)
+- ✅ Internal data science dashboards
+- ✅ Simple CRUD apps with no real-time requirements
+- ✅ Sequential workflows (wizard-style UIs)
+- ✅ Projects with &lt; 10 concurrent users</p>
+<p><strong>Streamlit is NOT suitable for:</strong>
+- ❌ Production enterprise applications
+- ❌ Real-time monitoring/control systems
+- ❌ Background job orchestration
+- ❌ Complex state management
+- ❌ High-concurrency applications (&gt;50 users)</p>
+<hr />
+<h2>2. PyShark Integration Issues</h2>
+<h3>2.1 Why PyShark + Streamlit Don't Mix</h3>
+<p><strong>PyShark Architecture:</strong></p>
+<pre><code class="language-python">import pyshark
+
+# PyShark uses asyncio for packet capture
+capture = pyshark.LiveCapture(interface='eth0')
+capture.sniff(timeout=50)  # ← BLOCKING for 50 seconds
+
+# Or async mode
+async def capture_packets():
+    capture = pyshark.LiveCapture(interface='eth0')
+    async for packet in capture.sniff_continuously():
+        process(packet)  # ← Continuous async stream
+</code></pre>
+<p><strong>Streamlit's Execution Model:</strong></p>
+<pre><code class="language-python">import streamlit as st
+import pyshark
+
+# This BLOCKS the entire Streamlit app
+capture = pyshark.LiveCapture(interface='eth0')
+capture.sniff(timeout=50)  # ← UI frozen for 50 seconds!
+
+# Async doesn't help because Streamlit isn't async-native
+async def capture():
+    async for packet in capture.sniff_continuously():
+        pass  # Can't update Streamlit UI from here
+</code></pre>
+<h3>2.2 Your Current Workaround (Flask Backend)</h3>
+<p><strong>Evidence from <code>flask_pcap_backend.py</code>:</strong></p>
+<pre><code class="language-python"># You've already solved this by using Flask as backend
+from flask import Flask
+import pyshark
+import threading
+
+@app.route(&quot;/replay_and_capture&quot;, methods=[&quot;POST&quot;])
+def replay_and_capture():
+    # Run pyshark in background thread
+    def capture_job():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        cap = pyshark.LiveCapture(...)
+        cap.sniff(timeout=50)
+        loop.close()
+
+    capture_thread = threading.Thread(target=capture_job)
+    capture_thread.start()
+    # ...
+</code></pre>
+<p><strong>Analysis:</strong>
+- ✅ Works around Streamlit's limitations
+- ❌ Adds architectural complexity (two separate servers)
+- ❌ No real-time updates to Streamlit UI
+- ❌ Polling required to check capture status
+- ❌ Difficult to debug (split stack)</p>
+<h3>2.3 Specific PyShark Problems with Streamlit</h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PyShark Requirement</th>
+<th>Streamlit Support</th>
+<th>Workaround</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Live Capture</strong></td>
+<td>Continuous async stream</td>
+<td>❌ No async support</td>
+<td>Flask backend + polling</td>
+</tr>
+<tr>
+<td><strong>Real-time Display</strong></td>
+<td>Packet-by-packet updates</td>
+<td>❌ No WebSocket</td>
+<td>Refresh button + session state</td>
+</tr>
+<tr>
+<td><strong>Long Captures</strong></td>
+<td>10+ minute captures</td>
+<td>❌ Script timeout</td>
+<td>Background thread + file write</td>
+</tr>
+<tr>
+<td><strong>Multiple Interfaces</strong></td>
+<td>Parallel captures</td>
+<td>❌ No parallelism</td>
+<td>Separate processes</td>
+</tr>
+<tr>
+<td><strong>Packet Filtering</strong></td>
+<td>Dynamic BPF updates</td>
+<td>❌ Requires rerun</td>
+<td>Store in session state</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. Alternative GUI Frameworks</h2>
+<h3>3.1 Framework Comparison Matrix</h3>
+<table>
+<thead>
+<tr>
+<th>Framework</th>
+<th>Async Support</th>
+<th>WebSocket</th>
+<th>Complexity</th>
+<th>Best For</th>
+<th>Learning Curve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FastAPI + React</strong></td>
+<td>✅✅✅ Native</td>
+<td>✅ Native</td>
+<td>High</td>
+<td>Production apps</td>
+<td>Medium-High</td>
+</tr>
+<tr>
+<td><strong>FastAPI + Vue</strong></td>
+<td>✅✅✅ Native</td>
+<td>✅ Native</td>
+<td>High</td>
+<td>Production apps</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td><strong>Gradio</strong></td>
+<td>✅ Built-in</td>
+<td>✅ Built-in</td>
+<td>Low</td>
+<td>ML/AI apps</td>
+<td>Low</td>
+</tr>
+<tr>
+<td><strong>Dash (Plotly)</strong></td>
+<td>✅ Callbacks</td>
+<td>✅ Via extensions</td>
+<td>Medium</td>
+<td>Data dashboards</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td><strong>NiceGUI</strong></td>
+<td>✅ Native</td>
+<td>✅ Native</td>
+<td>Low</td>
+<td>Internal tools</td>
+<td>Low</td>
+</tr>
+<tr>
+<td><strong>Reflex</strong></td>
+<td>✅ Native</td>
+<td>✅ Native</td>
+<td>Medium</td>
+<td>Full-stack Python</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td><strong>Streamlit</strong></td>
+<td>❌ Limited</td>
+<td>❌ Limited</td>
+<td>Very Low</td>
+<td>Prototypes only</td>
+<td>Very Low</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 Option 1: FastAPI + React/Vue (RECOMMENDED)</h3>
+<p><strong>Architecture:</strong></p>
+<pre><code>┌─────────────────────────────────────────────────────────┐
+│                    Frontend (React/Vue)                  │
+│  - Real-time agent status dashboard                     │
+│  - Natural language workflow creator                    │
+│  - Spectrum visualization charts                        │
+│  - WebSocket connection for live updates                │
+└────────────────────┬────────────────────────────────────┘
+                     │ WebSocket / REST API
+┌────────────────────┴────────────────────────────────────┐
+│                  Backend (FastAPI)                       │
+│  ┌────────────────────────────────────────────────┐    │
+│  │         Agentic Framework Layer                 │    │
+│  │  - Master Orchestrator                          │    │
+│  │  - Agent Registry                               │    │
+│  │  - Message Bus                                  │    │
+│  │  - MCP Client Manager                           │    │
+│  └────────────────────────────────────────────────┘    │
+│                                                          │
+│  ┌────────────────────────────────────────────────┐    │
+│  │         API Endpoints (REST)                    │    │
+│  │  - POST /api/workflows/execute                  │    │
+│  │  - GET  /api/agents/status                      │    │
+│  │  - GET  /api/instruments/list                   │    │
+│  │  - POST /api/capture/start                      │    │
+│  └────────────────────────────────────────────────┘    │
+│                                                          │
+│  ┌────────────────────────────────────────────────┐    │
+│  │         WebSocket Endpoints                     │    │
+│  │  - /ws/agents (agent status updates)            │    │
+│  │  - /ws/packets (live packet stream)             │    │
+│  │  - /ws/spectrum (real-time spectrum data)       │    │
+│  └────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────┘
+                     │
+┌────────────────────┴────────────────────────────────────┐
+│           Instrument Communication Layer                 │
+│  - PyShark (packet capture)                             │
+│  - Instrument adapters (TinySA, Viavi, etc.)            │
+│  - MCP servers                                          │
+└──────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>Pros:</strong>
+- ✅ Full async/await support for agents
+- ✅ Native WebSocket for real-time updates
+- ✅ Clean separation of concerns
+- ✅ Industry-standard architecture
+- ✅ Excellent performance (1000+ concurrent users)
+- ✅ Easy testing (pytest-fastapi, React Testing Library)
+- ✅ Production-ready ecosystem</p>
+<p><strong>Cons:</strong>
+- ❌ Higher initial development effort
+- ❌ Requires JavaScript knowledge (React/Vue)
+- ❌ More complex deployment
+- ❌ Steeper learning curve</p>
+<p><strong>Development Time:</strong>
+- Backend (FastAPI): 2-3 weeks
+- Frontend (React): 3-4 weeks
+- Integration &amp; Testing: 1-2 weeks
+- <strong>Total: 6-9 weeks</strong></p>
+<hr />
+<h3>3.3 Option 2: Gradio (RAPID MIGRATION)</h3>
+<p><strong>Architecture:</strong></p>
+<pre><code class="language-python">import gradio as gr
+import asyncio
+
+# Gradio supports async functions natively
+async def run_workflow(user_input: str):
+    orchestrator = get_orchestrator()
+    result = await orchestrator.execute_workflow(user_input)
+    return result
+
+# Create UI
+with gr.Blocks() as demo:
+    gr.Markdown(&quot;# EnnoiaCAT Agentic Platform&quot;)
+
+    with gr.Tab(&quot;Workflow Creator&quot;):
+        user_input = gr.Textbox(label=&quot;Describe your test&quot;)
+        output = gr.JSON(label=&quot;Results&quot;)
+        btn = gr.Button(&quot;Execute&quot;)
+        btn.click(run_workflow, inputs=user_input, outputs=output)
+
+    with gr.Tab(&quot;Agent Dashboard&quot;):
+        agent_status = gr.Dataframe(label=&quot;Agent Status&quot;)
+        refresh_btn = gr.Button(&quot;Refresh&quot;)
+        # Gradio supports auto-refresh!
+        demo.load(get_agent_status, outputs=agent_status, every=1)
+
+demo.launch()
+</code></pre>
+<p><strong>Pros:</strong>
+- ✅ <strong>Easiest migration</strong> from Streamlit (similar API)
+- ✅ Native async/await support
+- ✅ Built-in WebSocket support
+- ✅ Auto-refresh capabilities
+- ✅ Modern UI components
+- ✅ Python-only (no JavaScript needed)
+- ✅ Better performance than Streamlit
+- ✅ Active development (Hugging Face backing)</p>
+<p><strong>Cons:</strong>
+- ❌ Less flexible than React/Vue for complex UIs
+- ❌ Smaller ecosystem than Streamlit
+- ❌ Limited customization options</p>
+<p><strong>Development Time:</strong>
+- Migration: 1-2 weeks
+- Testing: 3-5 days
+- <strong>Total: 2-3 weeks</strong></p>
+<p><strong>PyShark Integration (Gradio):</strong></p>
+<pre><code class="language-python">import gradio as gr
+import pyshark
+import asyncio
+
+async def live_packet_capture(interface: str, duration: int):
+    capture = pyshark.LiveCapture(interface=interface)
+    packets = []
+
+    async for packet in capture.sniff_continuously():
+        packets.append(str(packet))
+        if len(packets) &gt;= duration * 10:  # ~10 packets/sec
+            break
+
+    return &quot;\n&quot;.join(packets)
+
+# Gradio handles async natively!
+interface = gr.Interface(
+    fn=live_packet_capture,
+    inputs=[gr.Textbox(label=&quot;Interface&quot;), gr.Slider(1, 60, label=&quot;Duration (s)&quot;)],
+    outputs=gr.Textbox(label=&quot;Captured Packets&quot;)
+)
+</code></pre>
+<hr />
+<h3>3.4 Option 3: NiceGUI (Python-First Alternative)</h3>
+<p><strong>Example:</strong></p>
+<pre><code class="language-python">from nicegui import ui, app
+import asyncio
+
+class AgenticDashboard:
+    def __init__(self):
+        self.agent_registry = AgentRegistry()
+
+    async def update_agent_status(self):
+        &quot;&quot;&quot;Auto-updates every second via WebSocket&quot;&quot;&quot;
+        while True:
+            agents = self.agent_registry.list_all_agents()
+            self.status_table.rows = [
+                {&quot;id&quot;: a.agent_id, &quot;status&quot;: a.status.value}
+                for a in agents
+            ]
+            await asyncio.sleep(1)
+
+    def create_ui(self):
+        with ui.tabs() as tabs:
+            ui.tab('Dashboard')
+            ui.tab('Workflows')
+            ui.tab('Packet Capture')
+
+        with ui.tab_panels(tabs, value='Dashboard'):
+            with ui.tab_panel('Dashboard'):
+                ui.label('Agent Status').classes('text-h4')
+                self.status_table = ui.table(
+                    columns=[
+                        {'name': 'id', 'label': 'Agent ID', 'field': 'id'},
+                        {'name': 'status', 'label': 'Status', 'field': 'status'},
+                    ],
+                    rows=[]
+                )
+
+                # Start auto-update
+                ui.timer(1.0, self.update_agent_status)
+
+dashboard = AgenticDashboard()
+dashboard.create_ui()
+
+ui.run(port=8080)
+</code></pre>
+<p><strong>Pros:</strong>
+- ✅ Pure Python (no JavaScript)
+- ✅ Native async/WebSocket
+- ✅ Modern UI (Tailwind CSS)
+- ✅ Real-time updates via timers
+- ✅ Easy to learn</p>
+<p><strong>Cons:</strong>
+- ❌ Newer framework (less mature)
+- ❌ Smaller community
+- ❌ Limited component library</p>
+<hr />
+<h3>3.5 Option 4: Dash (Plotly)</h3>
+<p><strong>Example:</strong></p>
+<pre><code class="language-python">from dash import Dash, html, dcc, Input, Output, callback
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+app.layout = dbc.Container([
+    dbc.Row([
+        dbc.Col(html.H1(&quot;EnnoiaCAT Dashboard&quot;), width=12)
+    ]),
+    dbc.Row([
+        dbc.Col([
+            dcc.Interval(id='interval', interval=1000),  # Update every 1s
+            dcc.Graph(id='spectrum-graph')
+        ])
+    ])
+])
+
+@callback(
+    Output('spectrum-graph', 'figure'),
+    Input('interval', 'n_intervals')
+)
+def update_spectrum(n):
+    # Get real-time data from agents
+    data = get_spectrum_data()
+    fig = go.Figure(data=[go.Scatter(x=data['freq'], y=data['power'])])
+    return fig
+</code></pre>
+<p><strong>Pros:</strong>
+- ✅ Excellent for data visualization
+- ✅ Real-time updates via callbacks
+- ✅ Large component library
+- ✅ Enterprise-ready</p>
+<p><strong>Cons:</strong>
+- ❌ Callback-based (not pure async)
+- ❌ Less intuitive than Gradio
+- ❌ Heavier than other options</p>
+<hr />
+<h2>4. Recommended Solution</h2>
+<h3>4.1 Short-Term (Next 2-3 Weeks): Gradio</h3>
+<p><strong>Why Gradio:</strong>
+1. <strong>Fastest migration</strong> from Streamlit (similar API)
+2. <strong>Solves PyShark issue</strong> immediately (native async)
+3. <strong>Enables agentic framework</strong> (background tasks, WebSocket)
+4. <strong>Low risk</strong> - can revert to Streamlit if needed
+5. <strong>Python-only</strong> - no JavaScript learning curve</p>
+<p><strong>Migration Effort:</strong>
+- Refactor 20-30 Streamlit apps → 1-2 weeks
+- Test PyShark integration → 2-3 days
+- Deploy → 1-2 days</p>
+<h3>4.2 Long-Term (3-6 Months): FastAPI + React</h3>
+<p><strong>Why FastAPI + React:</strong>
+1. <strong>Production-grade</strong> architecture
+2. <strong>Unlimited scalability</strong> (1000+ concurrent users)
+3. <strong>Best-in-class</strong> developer experience
+4. <strong>Industry standard</strong> (easy to hire developers)
+5. <strong>Full control</strong> over UI/UX</p>
+<p><strong>Phased Approach:</strong></p>
+<pre><code>Phase 1 (Week 1-3): Gradio Migration
+  └─ Get working system with async support
+
+Phase 2 (Week 4-8): FastAPI Backend
+  └─ Build REST API + WebSocket endpoints
+  └─ Keep Gradio as temporary frontend
+
+Phase 3 (Week 9-14): React Frontend
+  └─ Build professional UI
+  └─ Gradually replace Gradio components
+
+Phase 4 (Week 15-16): Polish &amp; Deploy
+  └─ Testing, optimization, deployment
+</code></pre>
+<hr />
+<h2>5. Migration Strategy</h2>
+<h3>5.1 Gradio Migration (Recommended First Step)</h3>
+<p><strong>Step 1: Install Gradio</strong></p>
+<pre><code class="language-bash">pip install gradio
+</code></pre>
+<p><strong>Step 2: Convert Simple Streamlit App</strong></p>
+<p><strong>Before (Streamlit):</strong></p>
+<pre><code class="language-python">import streamlit as st
+from tinySA_config import TinySAHelper
+
+st.title(&quot;TinySA Control&quot;)
+freq = st.slider(&quot;Frequency (MHz)&quot;, 87, 108, 100)
+
+if st.button(&quot;Scan&quot;):
+    helper = TinySAHelper()
+    result = helper.scan(freq)
+    st.write(result)
+</code></pre>
+<p><strong>After (Gradio):</strong></p>
+<pre><code class="language-python">import gradio as gr
+from tinySA_config import TinySAHelper
+
+async def scan_frequency(freq):
+    helper = TinySAHelper()
+    result = await helper.scan_async(freq)  # Now can be async!
+    return result
+
+demo = gr.Interface(
+    fn=scan_frequency,
+    inputs=gr.Slider(87, 108, value=100, label=&quot;Frequency (MHz)&quot;),
+    outputs=gr.Textbox(label=&quot;Results&quot;),
+    title=&quot;TinySA Control&quot;
+)
+
+demo.launch()
+</code></pre>
+<p><strong>Step 3: Add Real-Time Features</strong></p>
+<pre><code class="language-python">import gradio as gr
+import asyncio
+
+async def monitor_agents():
+    &quot;&quot;&quot;Updates every second automatically&quot;&quot;&quot;
+    registry = AgentRegistry()
+    while True:
+        agents = registry.list_all_agents()
+        status_data = [[a.agent_id, a.status.value] for a in agents]
+        yield status_data
+        await asyncio.sleep(1)
+
+with gr.Blocks() as demo:
+    gr.Markdown(&quot;# Agent Monitor&quot;)
+    status_table = gr.Dataframe(
+        headers=[&quot;Agent ID&quot;, &quot;Status&quot;],
+        label=&quot;Live Agent Status&quot;
+    )
+
+    # Auto-refresh every 1 second!
+    demo.load(monitor_agents, outputs=status_table, every=1)
+
+demo.launch()
+</code></pre>
+<p><strong>Step 4: PyShark Integration</strong></p>
+<pre><code class="language-python">import gradio as gr
+import pyshark
+import asyncio
+
+async def live_capture(interface: str, bpf_filter: str, duration: int):
+    &quot;&quot;&quot;Capture packets in real-time&quot;&quot;&quot;
+    capture = pyshark.LiveCapture(
+        interface=interface,
+        bpf_filter=bpf_filter
+    )
+
+    packets_summary = []
+    packet_count = 0
+
+    # Gradio supports async generators for streaming!
+    async for packet in capture.sniff_continuously():
+        packet_count += 1
+        summary = f&quot;Packet {packet_count}: {packet.sniff_time} - {packet.length} bytes&quot;
+        packets_summary.append(summary)
+
+        # Yield intermediate results (streaming!)
+        yield &quot;\n&quot;.join(packets_summary[-10:])  # Show last 10
+
+        if packet_count &gt;= duration * 10:
+            break
+
+    capture.close()
+    yield f&quot;Capture complete. Total packets: {packet_count}&quot;
+
+with gr.Blocks() as demo:
+    gr.Markdown(&quot;# Live Packet Capture&quot;)
+
+    with gr.Row():
+        interface = gr.Textbox(label=&quot;Interface&quot;, value=&quot;eth0&quot;)
+        bpf_filter = gr.Textbox(label=&quot;BPF Filter&quot;, value=&quot;tcp port 80&quot;)
+        duration = gr.Slider(1, 60, value=10, label=&quot;Duration (s)&quot;)
+
+    capture_btn = gr.Button(&quot;Start Capture&quot;)
+    output = gr.Textbox(label=&quot;Packets&quot;, lines=15)
+
+    capture_btn.click(
+        live_capture,
+        inputs=[interface, bpf_filter, duration],
+        outputs=output
+    )
+
+demo.launch()
+</code></pre>
+<h3>5.2 Agentic Framework Integration (Gradio)</h3>
+<p><strong>Full Example: Agentic Dashboard with Gradio</strong></p>
+<pre><code class="language-python">import gradio as gr
+import asyncio
+from agents.agent_registry import AgentRegistry
+from agents.orchestrator_agent import MasterOrchestrator
+from agents.workflow_translator import WorkflowTranslator
+from typing import List, Dict
+
+class EnnoiaCATApp:
+    def __init__(self):
+        self.registry = AgentRegistry()
+        self.orchestrator = MasterOrchestrator(self.registry, message_bus)
+        self.translator = WorkflowTranslator(llm_client)
+
+    async def execute_workflow(self, user_request: str, progress=gr.Progress()):
+        &quot;&quot;&quot;Execute workflow with progress updates&quot;&quot;&quot;
+        progress(0, desc=&quot;Translating request to workflow...&quot;)
+
+        # Translate natural language to workflow
+        workflow = await self.translator.translate(user_request)
+
+        progress(0.2, desc=&quot;Starting workflow execution...&quot;)
+
+        # Execute workflow with streaming updates
+        context = {}
+        total_steps = len(workflow.steps)
+
+        for i, step in enumerate(workflow.steps):
+            progress((i + 1) / total_steps, desc=f&quot;Executing: {step.agent_capability}&quot;)
+            result = await self.orchestrator._execute_step(step, context)
+            context[step.step_id] = result
+
+        progress(1.0, desc=&quot;Workflow complete!&quot;)
+        return context
+
+    async def get_agent_status(self):
+        &quot;&quot;&quot;Get current agent status&quot;&quot;&quot;
+        agents = self.registry.list_all_agents()
+        return [
+            [a.agent_id, a.name, a.status.value, len(a.get_capabilities())]
+            for a in agents
+        ]
+
+    def create_ui(self):
+        with gr.Blocks(title=&quot;EnnoiaCAT Agentic Platform&quot;) as demo:
+            gr.Markdown(&quot;# 🤖 EnnoiaCAT Agentic Test Platform&quot;)
+
+            with gr.Tabs():
+                # Tab 1: Workflow Creator
+                with gr.Tab(&quot;Workflow Creator&quot;):
+                    gr.Markdown(&quot;&quot;&quot;
+                    Describe what you want to test in natural language.
+                    **Example:** &quot;Scan 5G band n77 in New York and detect anomalies&quot;
+                    &quot;&quot;&quot;)
+
+                    user_input = gr.Textbox(
+                        label=&quot;Describe your test&quot;,
+                        placeholder=&quot;Test WiFi channels and analyze interference...&quot;,
+                        lines=3
+                    )
+
+                    execute_btn = gr.Button(&quot;🚀 Execute Workflow&quot;, variant=&quot;primary&quot;)
+                    workflow_output = gr.JSON(label=&quot;Workflow Results&quot;)
+
+                    execute_btn.click(
+                        self.execute_workflow,
+                        inputs=user_input,
+                        outputs=workflow_output
+                    )
+
+                # Tab 2: Agent Dashboard
+                with gr.Tab(&quot;Agent Dashboard&quot;):
+                    gr.Markdown(&quot;## Live Agent Status&quot;)
+
+                    agent_table = gr.Dataframe(
+                        headers=[&quot;Agent ID&quot;, &quot;Name&quot;, &quot;Status&quot;, &quot;Capabilities&quot;],
+                        label=&quot;Agents&quot;,
+                        interactive=False
+                    )
+
+                    # Auto-refresh every 2 seconds
+                    demo.load(self.get_agent_status, outputs=agent_table, every=2)
+
+                # Tab 3: Packet Capture
+                with gr.Tab(&quot;Packet Capture&quot;):
+                    gr.Markdown(&quot;## Live Packet Capture&quot;)
+
+                    with gr.Row():
+                        interface = gr.Textbox(label=&quot;Interface&quot;, value=&quot;eth0&quot;)
+                        bpf = gr.Textbox(label=&quot;Filter&quot;, value=&quot;&quot;)
+                        duration = gr.Slider(1, 300, value=30, label=&quot;Duration (s)&quot;)
+
+                    capture_btn = gr.Button(&quot;Start Capture&quot;)
+                    packets_output = gr.Textbox(label=&quot;Packets&quot;, lines=20)
+
+                    capture_btn.click(
+                        self.live_packet_capture,
+                        inputs=[interface, bpf, duration],
+                        outputs=packets_output
+                    )
+
+                # Tab 4: Instrument Control
+                with gr.Tab(&quot;Instruments&quot;):
+                    gr.Markdown(&quot;## Connected Instruments&quot;)
+
+                    detect_btn = gr.Button(&quot;🔍 Detect Instruments&quot;)
+                    instruments_output = gr.JSON(label=&quot;Detected Instruments&quot;)
+
+                    detect_btn.click(
+                        self.detect_instruments,
+                        outputs=instruments_output
+                    )
+
+            return demo
+
+    async def live_packet_capture(self, interface: str, bpf: str, duration: int):
+        &quot;&quot;&quot;Live packet capture with streaming updates&quot;&quot;&quot;
+        import pyshark
+
+        capture = pyshark.LiveCapture(interface=interface, bpf_filter=bpf)
+        packets = []
+
+        async for packet in capture.sniff_continuously():
+            summary = f&quot;{packet.sniff_time} | {packet.length} bytes | {packet.highest_layer}&quot;
+            packets.append(summary)
+
+            # Stream updates every 10 packets
+            if len(packets) % 10 == 0:
+                yield &quot;\n&quot;.join(packets)
+
+            if len(packets) &gt;= duration * 10:
+                break
+
+        yield &quot;\n&quot;.join(packets) + f&quot;\n\n=== Capture Complete ({len(packets)} packets) ===&quot;
+
+    async def detect_instruments(self):
+        &quot;&quot;&quot;Detect connected instruments&quot;&quot;&quot;
+        from instrument_detector import InstrumentDetector
+
+        detector = InstrumentDetector()
+        instruments = detector.detect_all()
+
+        return {
+            &quot;count&quot;: len(instruments),
+            &quot;instruments&quot;: [
+                {
+                    &quot;type&quot;: inst.instrument_type.value,
+                    &quot;connection&quot;: inst.connection_info,
+                    &quot;name&quot;: inst.display_name
+                }
+                for inst in instruments
+            ]
+        }
+
+# Launch app
+app = EnnoiaCATApp()
+demo = app.create_ui()
+demo.launch(server_name=&quot;0.0.0.0&quot;, server_port=7860, share=False)
+</code></pre>
+<h3>5.3 Deployment Comparison</h3>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Streamlit</th>
+<th>Gradio</th>
+<th>FastAPI + React</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Development Server</strong></td>
+<td><code>streamlit run app.py</code></td>
+<td><code>python app.py</code></td>
+<td><code>uvicorn main:app</code> + <code>npm start</code></td>
+</tr>
+<tr>
+<td><strong>Production Deploy</strong></td>
+<td>Streamlit Cloud / Docker</td>
+<td>Hugging Face Spaces / Docker</td>
+<td>AWS/Azure/GCP + CDN</td>
+</tr>
+<tr>
+<td><strong>Reverse Proxy</strong></td>
+<td>Required (Nginx)</td>
+<td>Optional</td>
+<td>Required (Nginx)</td>
+</tr>
+<tr>
+<td><strong>SSL/HTTPS</strong></td>
+<td>Manual setup</td>
+<td>Automatic (HF Spaces)</td>
+<td>Manual setup</td>
+</tr>
+<tr>
+<td><strong>Scalability</strong></td>
+<td>Vertical only</td>
+<td>Horizontal (with limits)</td>
+<td>Fully horizontal</td>
+</tr>
+<tr>
+<td><strong>Cost (100 users)</strong></td>
+<td>$50-100/mo</td>
+<td>$20-50/mo</td>
+<td>$100-200/mo</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>6. Code Examples</h2>
+<h3>6.1 FastAPI Backend for Agentic Framework</h3>
+<pre><code class="language-python"># main.py (FastAPI backend)
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Dict
+import asyncio
+import json
+
+from agents.agent_registry import AgentRegistry
+from agents.orchestrator_agent import MasterOrchestrator
+from agents.workflow_translator import WorkflowTranslator
+
+app = FastAPI(title=&quot;EnnoiaCAT API&quot;)
+
+# CORS for React frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[&quot;http://localhost:3000&quot;],
+    allow_credentials=True,
+    allow_methods=[&quot;*&quot;],
+    allow_headers=[&quot;*&quot;],
+)
+
+# Initialize agentic framework
+registry = AgentRegistry()
+orchestrator = MasterOrchestrator(registry)
+translator = WorkflowTranslator()
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            await connection.send_json(message)
+
+manager = ConnectionManager()
+
+# REST API Endpoints
+class WorkflowRequest(BaseModel):
+    user_request: str
+
+@app.post(&quot;/api/workflows/execute&quot;)
+async def execute_workflow(request: WorkflowRequest):
+    &quot;&quot;&quot;Execute a workflow from natural language&quot;&quot;&quot;
+    workflow = await translator.translate(request.user_request)
+    result = await orchestrator.execute_workflow(workflow)
+    return {&quot;status&quot;: &quot;success&quot;, &quot;result&quot;: result}
+
+@app.get(&quot;/api/agents/status&quot;)
+async def get_agent_status():
+    &quot;&quot;&quot;Get status of all agents&quot;&quot;&quot;
+    agents = registry.list_all_agents()
+    return {
+        &quot;agents&quot;: [
+            {
+                &quot;id&quot;: a.agent_id,
+                &quot;name&quot;: a.name,
+                &quot;status&quot;: a.status.value,
+                &quot;capabilities&quot;: [c.name for c in a.get_capabilities()]
+            }
+            for a in agents
+        ]
+    }
+
+@app.get(&quot;/api/instruments/detect&quot;)
+async def detect_instruments():
+    &quot;&quot;&quot;Detect connected instruments&quot;&quot;&quot;
+    from instrument_detector import InstrumentDetector
+    detector = InstrumentDetector()
+    instruments = detector.detect_all()
+
+    return {
+        &quot;count&quot;: len(instruments),
+        &quot;instruments&quot;: [
+            {
+                &quot;type&quot;: inst.instrument_type.value,
+                &quot;connection&quot;: inst.connection_info
+            }
+            for inst in instruments
+        ]
+    }
+
+# WebSocket Endpoints
+@app.websocket(&quot;/ws/agents&quot;)
+async def websocket_agents(websocket: WebSocket):
+    &quot;&quot;&quot;Stream real-time agent status updates&quot;&quot;&quot;
+    await manager.connect(websocket)
+
+    try:
+        while True:
+            # Send agent status every second
+            agents = registry.list_all_agents()
+            status = {
+                &quot;type&quot;: &quot;agent_status&quot;,
+                &quot;data&quot;: [
+                    {&quot;id&quot;: a.agent_id, &quot;status&quot;: a.status.value}
+                    for a in agents
+                ]
+            }
+            await websocket.send_json(status)
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.websocket(&quot;/ws/packets/{interface}&quot;)
+async def websocket_packets(websocket: WebSocket, interface: str):
+    &quot;&quot;&quot;Stream live packet capture&quot;&quot;&quot;
+    import pyshark
+
+    await websocket.accept()
+
+    try:
+        capture = pyshark.LiveCapture(interface=interface)
+
+        async for packet in capture.sniff_continuously():
+            packet_data = {
+                &quot;type&quot;: &quot;packet&quot;,
+                &quot;time&quot;: str(packet.sniff_time),
+                &quot;length&quot;: packet.length,
+                &quot;protocol&quot;: packet.highest_layer
+            }
+            await websocket.send_json(packet_data)
+    except WebSocketDisconnect:
+        pass
+
+if __name__ == &quot;__main__&quot;:
+    import uvicorn
+    uvicorn.run(app, host=&quot;0.0.0.0&quot;, port=8000)
+</code></pre>
+<h3>6.2 React Frontend (Example Component)</h3>
+<pre><code class="language-jsx">// AgentDashboard.jsx
+import React, { useEffect, useState } from 'react';
+import { Card, Table, Badge } from 'react-bootstrap';
+
+function AgentDashboard() {
+  const [agents, setAgents] = useState([]);
+  const [ws, setWs] = useState(null);
+
+  useEffect(() =&gt; {
+    // Connect to WebSocket for real-time updates
+    const websocket = new WebSocket('ws://localhost:8000/ws/agents');
+
+    websocket.onmessage = (event) =&gt; {
+      const data = JSON.parse(event.data);
+      if (data.type === 'agent_status') {
+        setAgents(data.data);
+      }
+    };
+
+    setWs(websocket);
+
+    return () =&gt; websocket.close();
+  }, []);
+
+  const getStatusBadge = (status) =&gt; {
+    const variants = {
+      'idle': 'success',
+      'busy': 'warning',
+      'error': 'danger',
+      'offline': 'secondary'
+    };
+    return &lt;Badge bg={variants[status]}&gt;{status.toUpperCase()}&lt;/Badge&gt;;
+  };
+
+  return (
+    &lt;Card&gt;
+      &lt;Card.Header&gt;
+        &lt;h4&gt;🤖 Agent Status (Live)&lt;/h4&gt;
+      &lt;/Card.Header&gt;
+      &lt;Card.Body&gt;
+        &lt;Table striped bordered hover&gt;
+          &lt;thead&gt;
+            &lt;tr&gt;
+              &lt;th&gt;Agent ID&lt;/th&gt;
+              &lt;th&gt;Status&lt;/th&gt;
+            &lt;/tr&gt;
+          &lt;/thead&gt;
+          &lt;tbody&gt;
+            {agents.map(agent =&gt; (
+              &lt;tr key={agent.id}&gt;
+                &lt;td&gt;{agent.id}&lt;/td&gt;
+                &lt;td&gt;{getStatusBadge(agent.status)}&lt;/td&gt;
+              &lt;/tr&gt;
+            ))}
+          &lt;/tbody&gt;
+        &lt;/Table&gt;
+      &lt;/Card.Body&gt;
+    &lt;/Card&gt;
+  );
+}
+
+export default AgentDashboard;
+</code></pre>
+<hr />
+<h2>7. Decision Matrix</h2>
+<h3>7.1 Recommendation Summary</h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Streamlit</th>
+<th>Gradio</th>
+<th>FastAPI + React</th>
+<th>Winner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Async Support</strong></td>
+<td>❌ 1/10</td>
+<td>✅ 9/10</td>
+<td>✅✅ 10/10</td>
+<td>FastAPI + React</td>
+</tr>
+<tr>
+<td><strong>PyShark Integration</strong></td>
+<td>❌ 2/10</td>
+<td>✅ 9/10</td>
+<td>✅✅ 10/10</td>
+<td>FastAPI + React</td>
+</tr>
+<tr>
+<td><strong>Agentic Framework</strong></td>
+<td>❌ 3/10</td>
+<td>✅ 8/10</td>
+<td>✅✅ 10/10</td>
+<td>FastAPI + React</td>
+</tr>
+<tr>
+<td><strong>Migration Effort</strong></td>
+<td>N/A</td>
+<td>✅✅ 9/10</td>
+<td>❌ 3/10</td>
+<td>Gradio</td>
+</tr>
+<tr>
+<td><strong>Learning Curve</strong></td>
+<td>✅✅ 10/10</td>
+<td>✅ 8/10</td>
+<td>❌ 4/10</td>
+<td>Streamlit</td>
+</tr>
+<tr>
+<td><strong>Production Readiness</strong></td>
+<td>❌ 4/10</td>
+<td>✅ 7/10</td>
+<td>✅✅ 10/10</td>
+<td>FastAPI + React</td>
+</tr>
+<tr>
+<td><strong>Real-time Updates</strong></td>
+<td>❌ 2/10</td>
+<td>✅ 8/10</td>
+<td>✅✅ 10/10</td>
+<td>FastAPI + React</td>
+</tr>
+<tr>
+<td><strong>Performance</strong></td>
+<td>❌ 4/10</td>
+<td>✅ 7/10</td>
+<td>✅✅ 10/10</td>
+<td>FastAPI + React</td>
+</tr>
+<tr>
+<td><strong>Community Support</strong></td>
+<td>✅ 9/10</td>
+<td>✅ 7/10</td>
+<td>✅✅ 10/10</td>
+<td>Tie</td>
+</tr>
+</tbody>
+</table>
+<h3>7.2 Final Recommendations</h3>
+<h4><strong>Immediate Action (Week 1-3): Migrate to Gradio</strong></h4>
+<p><strong>Why:</strong>
+- ✅ Solves PyShark integration immediately
+- ✅ Enables agentic framework development
+- ✅ Minimal code changes from Streamlit
+- ✅ Low risk, high reward</p>
+<p><strong>Estimated Effort:</strong> 2-3 weeks</p>
+<h4><strong>Medium-Term (Month 2-3): Build FastAPI Backend</strong></h4>
+<p><strong>Why:</strong>
+- ✅ Production-grade architecture
+- ✅ Can keep Gradio frontend temporarily
+- ✅ Enables future scalability</p>
+<p><strong>Estimated Effort:</strong> 3-4 weeks</p>
+<h4><strong>Long-Term (Month 4-6): React Frontend (Optional)</strong></h4>
+<p><strong>Why:</strong>
+- ✅ Best user experience
+- ✅ Unlimited UI customization
+- ✅ Industry standard</p>
+<p><strong>Estimated Effort:</strong> 4-6 weeks</p>
+<hr />
+<h2>8. Next Steps</h2>
+<h3>Immediate Actions (This Week)</h3>
+<ol>
+<li><strong>Install Gradio</strong>: <code>pip install gradio</code></li>
+<li><strong>Convert one Streamlit app</strong> to Gradio as proof-of-concept</li>
+<li><strong>Test PyShark integration</strong> with Gradio</li>
+<li><strong>Share results</strong> with team for validation</li>
+</ol>
+<h3>Phase 1: Gradio Migration (Week 1-3)</h3>
+<ol>
+<li><strong>Week 1</strong>: Convert 5-7 core Streamlit apps</li>
+<li><strong>Week 2</strong>: Integrate with agentic framework</li>
+<li><strong>Week 3</strong>: Testing &amp; refinement</li>
+</ol>
+<h3>Phase 2: FastAPI Backend (Week 4-8)</h3>
+<ol>
+<li><strong>Week 4-5</strong>: Build REST API endpoints</li>
+<li><strong>Week 6-7</strong>: Add WebSocket support</li>
+<li><strong>Week 8</strong>: Integration testing</li>
+</ol>
+<h3>Phase 3: Production Deployment (Week 9-10)</h3>
+<ol>
+<li><strong>Week 9</strong>: Docker containerization</li>
+<li><strong>Week 10</strong>: Deploy to cloud (AWS/Azure)</li>
+</ol>
+<hr />
+<h2>Conclusion</h2>
+<p><strong>Streamlit is fundamentally incompatible</strong> with:
+- Real-time packet capture (PyShark)
+- Agentic frameworks (background agents, event-driven architecture)
+- Production enterprise applications (scalability, performance)</p>
+<p><strong>Recommended path forward:</strong></p>
+<ol>
+<li><strong>Short-term (2-3 weeks)</strong>: Migrate to <strong>Gradio</strong></li>
+<li>Fastest migration</li>
+<li>Solves all immediate problems</li>
+<li>
+<p>Python-only (no JavaScript)</p>
+</li>
+<li>
+<p><strong>Long-term (3-6 months)</strong>: Build <strong>FastAPI + React</strong></p>
+</li>
+<li>Production-grade architecture</li>
+<li>Unlimited scalability</li>
+<li>Best-in-class UX</li>
+</ol>
+<p><strong>Migration is NOT optional</strong> - it's <strong>essential</strong> for the agentic framework transformation to succeed.</p>
+<hr />
+<p><strong>Document End</strong></p>

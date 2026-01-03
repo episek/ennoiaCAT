@@ -1,0 +1,11 @@
+langchain
+langchain-community
+faiss-cpu
+bs4
+requests
+python-dotenv
+torch
+transformers
+langchain_huggingface
+bitsandbytes
+accelerate
