@@ -85,7 +85,11 @@ class MapAPI:
     def _init_slm(self, model_name: str) -> None:
         """Initialize local TinyLlama-style SLM (HF)."""
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            local_files_only=True,
+            trust_remote_code=False
+        )
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.use_default_system_prompt = False
@@ -94,7 +98,8 @@ class MapAPI:
             model_name,
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
             device_map={"": self.device},
-            local_files_only=True
+            local_files_only=True,
+            trust_remote_code=False
         )
         self.model.eval()
 

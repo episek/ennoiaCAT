@@ -160,7 +160,11 @@ class CSHelper:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Load Tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(base_model_name, local_files_only=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_name,
+            local_files_only=True,
+            trust_remote_code=False
+        )
         tokenizer.pad_token = tokenizer.unk_token  # Recommended for LLaMA models
         tokenizer.use_default_system_prompt = False  # Avoid auto-formatting if needed
 
@@ -169,7 +173,8 @@ class CSHelper:
             base_model_name,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
             device_map={"": device},
-            local_files_only=True
+            local_files_only=True,
+            trust_remote_code=False
         )
         print(f"Base model loaded on {device}.")
 
@@ -237,7 +242,11 @@ class CSHelper:
 
     def load_model(self, device):
         compute_dtype = torch.float16 if device == "cuda" else torch.float32
-        tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            local_files_only=True,
+            trust_remote_code=False
+        )
         tokenizer.pad_token = tokenizer.eos_token
 
         offload_path = "offload_dir"
@@ -249,7 +258,8 @@ class CSHelper:
             offload_folder=offload_path,
             torch_dtype=compute_dtype,
             low_cpu_mem_usage=True,
-            local_files_only=True
+            local_files_only=True,
+            trust_remote_code=False
         )
         try:
             peft_model = PeftModel.from_pretrained(base_model, "./tinyllama_CS_lora", offload_folder=offload_path)
