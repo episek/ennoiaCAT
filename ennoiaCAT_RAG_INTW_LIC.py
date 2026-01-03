@@ -16,13 +16,18 @@ args = parser.parse_args()
 if args.action == "activate":
     if not args.key:
         print("❗ Please provide a license key with --key")
+        success = False
     else:
-        success = lic.request_license(args.key)
+        lic.request_license(args.key)
+        success = True
 elif args.action == "verify":
-    success = lic.verify_license_file()
+    lic.verify_license_file()
+    success = True
 else:
-    success = lic.verify_license_file()
-    
+    lic.verify_license_file()
+    success = True
+
+# Development mode: bypass license check
 success = 1
   
 if not success:
@@ -37,7 +42,6 @@ from map_api import MapAPI
 from types import SimpleNamespace
 import pandas as pd
 import pywifi
-from pywifi import const
 import time
 
 
@@ -195,7 +199,7 @@ if prompt:
             if isinstance(parsed, dict):
                 api_dict = parsed
                 api_dict["save"] = True
-        except Exception:
+        except (ValueError, SyntaxError):
             print("Warning: Failed to parse response as a valid dictionary. Using default options.")
 
     print(f"\nParsed API options:\n{api_dict}")
@@ -255,7 +259,7 @@ if prompt:
                 return (freq - 5000) // 5
             elif 5955 <= freq <= 7115:
                 return (freq - 5950) // 5 + 1
-        except:
+        except (ValueError, TypeError, ZeroDivisionError):
             pass
         return None
 
@@ -270,14 +274,14 @@ if prompt:
                 return "6 GHz"
             else:
                 return "Unknown"
-        except:
+        except (ValueError, TypeError, ZeroDivisionError):
             pass
         return None
 
     def is_dfs_channel(channel):
         try:
             ch = int(channel)
-        except:
+        except (ValueError, TypeError):
             return False
 
         # Known DFS channel ranges for 5 GHz
@@ -288,7 +292,7 @@ if prompt:
     def infer_bandwidth(channel, radio_type):
         try:
             ch = int(channel)
-        except:
+        except (ValueError, TypeError):
             return "Unknown"
 
         rt = radio_type.lower()

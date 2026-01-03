@@ -14,10 +14,13 @@ if args.action == "activate":
         print("❗ Provide a license key with --key")
         success = False
     else:
-        success = lic.request_license(args.key)
+        lic.request_license(args.key)
+        success = True
 else:
-    success = lic.verify_license_file()
+    lic.verify_license_file()
+    success = True
 
+# Development mode: bypass license check
 success = 1
 
 
@@ -282,7 +285,7 @@ def parse_freq(val, default=None):
     # Fallback: try to parse as plain float (already in Hz)
     try:
         return float(s)
-    except Exception:
+    except (ValueError, TypeError):
         return default
 
 
@@ -549,10 +552,10 @@ if prompt:
     api_dict = {}
     try:
         api_dict = json.loads(api_raw)
-    except Exception:
+    except json.JSONDecodeError:
         try:
             api_dict = ast.literal_eval(api_raw)
-        except Exception:
+        except (ValueError, SyntaxError):
             api_dict = {}
 
     opt = SimpleNamespace(**api_dict)
@@ -610,7 +613,7 @@ if prompt:
             vbw = parse_freq(getattr(opt, "vbw", None)) or rbw
             try:
                 ref_level = float(getattr(opt, "ref_level", 0))
-            except Exception:
+            except (ValueError, TypeError):
                 ref_level = 0.0
 
             # Explicitly enter Spectrum Analyzer mode

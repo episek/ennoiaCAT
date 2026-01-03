@@ -1,20 +1,20 @@
 # map_api_vi.py
 import json
 import re
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 import torch
 
 try:
     from transformers import AutoTokenizer, AutoModelForCausalLM
     HF_AVAILABLE = True
-except Exception:
+except (ImportError, ModuleNotFoundError):
     HF_AVAILABLE = False
 
 try:
     from openai import OpenAI
     OPENAI_AVAILABLE = True
-except Exception:
+except (ImportError, ModuleNotFoundError):
     OPENAI_AVAILABLE = False
 
 

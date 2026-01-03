@@ -251,7 +251,7 @@ class TinySAHelper:
     def load_OpenAI_model():
 
         from openai import OpenAI
-        from openai_api_key_verifier import verify_api_key, check_model_access, list_models, get_account_usage
+        from openai_api_key_verifier import verify_api_key, check_model_access
         # Load environment variables from .env file
         load_dotenv()
         # Replace with your actual API key
@@ -315,7 +315,7 @@ class TinySAHelper:
                 if opt.start or opt.stop:
                     nv.set_sweep(opt.start, opt.stop)
                     nv.fetch_frequencies()
-                    s = nv.send_scan(opt.start, opt.stop)
+                    nv.send_scan(opt.start, opt.stop)
                     s = nv.data(p)
                     nv.resume()
 
@@ -453,7 +453,7 @@ class TinySAHelper:
                 try:
                     uplink = [int(x.strip()) for x in band['Uplink Frequency (MHz)'].split(' - ')]
                     downlink = [int(x.strip()) for x in band['Downlink Frequency (MHz)'].split(' - ')]
-                except Exception:
+                except (ValueError, KeyError, IndexError, AttributeError):
                     continue  # Skip malformed entries
 
                 if uplink[0] <= freq <= uplink[1] or downlink[0] <= freq <= downlink[1]:
