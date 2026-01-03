@@ -87,6 +87,11 @@ Thumbs.db
 # Claude Code
 .claude/
 
+# Test and check scripts (may contain API keys during testing)
+*_check.py
+*_limit*.py
+*_test.py
+
 # Temporary files
 $env
 *.tmp
