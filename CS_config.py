@@ -325,7 +325,16 @@ class CSHelper:
 
 
     def configure_CS(self, opt, lang, d=0):
-        
+
+        def t(text):
+            """Translate text to target language."""
+            if not TRANSLATOR_AVAILABLE or not lang or lang == "en":
+                return text
+            try:
+                return GoogleTranslator(source='auto', target=lang).translate(text)
+            except Exception:
+                return text
+
         def save_float_list_as_bin(float_list, filename):
             with open(filename, 'wb') as f:
                 for value in float_list:
@@ -353,7 +362,7 @@ class CSHelper:
                 writer.writerow(['I', 'Q'])
                 writer.writerows(iq_pairs)
 
-            st.write(f"[✅] Saved CSV: {csv_file}")
+            st.write(t("[✅] Saved CSV:") + f" {csv_file}")
             with st.spinner("🔄 Processing, please wait..."):
                 time.sleep(3)  # simulate long task
             return(iq_pairs)
@@ -387,8 +396,7 @@ class CSHelper:
             # Verify power consistency
             freq_domain_power = 10*np.log10(np.sum(np.abs(fft_data)**2)/N)  # Power in frequency domain
             #st.write(f"Freq Domain Power: {freq_domain_power}")
-            text = f"Detected high DC component of > 60dB above noise floor. Suppressed the DC Component"
-            translated = GoogleTranslator(source='auto', target=lang).translate(text) if TRANSLATOR_AVAILABLE else text
+            text = t("Detected high DC component of > 60dB above noise floor. Suppressed the DC Component")
             #st.write(text)        
 
             fig, ax = plt.subplots(figsize=(10, 4))
@@ -439,9 +447,7 @@ class CSHelper:
         def pcap_playback():
             #ip = "192.168.1.101"  # IP address of the system
             #uribase = "http://"+ip+"/api/v1/"
-            text = ("Started Loading the PCAP file")
-            translated = GoogleTranslator(source='auto', target=lang).translate(text) if TRANSLATOR_AVAILABLE else text
-            st.write(translated)
+            st.write(t("Started Loading the PCAP file"))
 
             #pcapfile = "oran_uplane_output_interf_det_awgn_new_DL.pcap"
             uploaded_file = None
@@ -452,7 +458,7 @@ class CSHelper:
                 save_path = os.path.join(os.getcwd(), uploaded_file.name)
                 with open(save_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                st.success(f"Saved file to: {save_path}")
+                st.success(t("Saved file to:") + f" {save_path}")
 
                 # Prepare payload for Flask
                 pcapfile = {"filepath": save_path}
@@ -460,7 +466,7 @@ class CSHelper:
             else: 
                 #pcapfile = "oran_uplane_output_interf_det_awgn_new_DL_UL.pcap"
                 pcapfile = "test_ip36to37_9000B.pcap"
-                st.write(f"Selected Fronthaul File: {pcapfile}")
+                st.write(t("Selected Fronthaul File:") + f" {pcapfile}")
             
 
             # # ---------------------------------------------------------------------
@@ -484,7 +490,7 @@ class CSHelper:
                 # if response.json()['state'] != "PLAYING":
                     # break
 
-            st.write("Done!")
+            st.write(t("Done!"))
 
         # === Helper: list interfaces with IPs ===
         def list_interfaces_with_ips():
@@ -609,9 +615,9 @@ class CSHelper:
                 src_mac_out = f"02:11:22:33:44:55"
 
                 if src_ip_out and iface_out and src_ip_in and iface_in:
-                    st.success("✅ Interfaces Selected")
-                    st.write(f"Send via: {iface_out} ({src_ip_out})")
-                    st.write(f"Capture on: {iface_in} ({src_ip_in})")
+                    st.success(t("✅ Interfaces Selected"))
+                    st.write(t("Send via:") + f" {iface_out} ({src_ip_out})")
+                    st.write(t("Capture on:") + f" {iface_in} ({src_ip_in})")
 
                     pcap_file_out = st.text_input("Playback PCAP File", "oran_uplane_DLUL_cisco.pcap")
                     pcap_file_in = st.text_input("Captured Output File", "capture_output.pcapng")
@@ -636,14 +642,14 @@ class CSHelper:
                     if res.ok:
                         result = res.json()
                         #st.success("✅ Capture Successfully Completed!")
-                        st.success("✅ Successfully Captured on Ennoia ECP!")
-                        st.write(f"Sent: {result['pkts_sent']} pkts | {result['bytes_sent']/1e6:.2f} MB")
-                        st.write(f"Captured in: {result['output_file']}")
+                        st.success(t("✅ Successfully Captured on Ennoia ECP!"))
+                        st.write(t("Sent:") + f" {result['pkts_sent']} pkts | {result['bytes_sent']/1e6:.2f} MB")
+                        st.write(t("Captured in:") + f" {result['output_file']}")
                     else:
-                        st.error(f"❌ Error: {res.status_code}")
+                        st.error(t("❌ Error:") + f" {res.status_code}")
 
                 else:
-                    st.info("Please select both Output and Capture interfaces to proceed.")
+                    st.info(t("Please select both Output and Capture interfaces to proceed."))
             
 
                 # # === Stats ===
