@@ -216,7 +216,8 @@ genReport = None
 prompt = ""
 interf = 0
 layer_interf_start = [0, 0, 0, 0]
-layer_interf_end = [0, 0, 0, 0]
+layer_interf_end = [272, 272, 272, 272]  # Default to full range (no interference)
+layer_has_interf = [False, False, False, False]  # Per-layer interference flag
 evma_db = [0, 0, 0, 0]
 
 # Frame parameters (defaults for 100MHz, 30kHz SCS)
@@ -934,10 +935,15 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
     Args:
         has_tx_reference: If False, use DMRS-based SNR/EVM calculation (no tx_frame_iq.csv)
     """
-    global interf, layer_interf_start, layer_interf_end, evma_db, numLayers
+    global interf, layer_interf_start, layer_interf_end, layer_has_interf, evma_db, numLayers
+
+    # Calculate number of PRBs from REs (12 REs per PRB)
+    num_prbs = num_res // 12  # 273 for 100MHz
+    max_prb = num_prbs - 1    # 272 for 100MHz (0-indexed)
 
     layer_interf_start = [0, 0, 0, 0]
-    layer_interf_end = [0, 0, 0, 0]
+    layer_interf_end = [max_prb, max_prb, max_prb, max_prb]  # Full range = no interference
+    layer_has_interf = [False, False, False, False]
     interf = 0
     numLayers = num_layers
     eq_frame_mimo = None
@@ -1027,13 +1033,14 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                     regions = blind_regions[layer]
                     if not regions:
                         print("  No Interference Detected.")
-                        layer_interf_start[layer] = 0
-                        layer_interf_end[layer] = 0
+                        # Keep defaults: start=0, end=max_prb (full clean range)
+                        layer_has_interf[layer] = False
                     else:
                         for start, end in regions:
                             print(f"  Interference Detected from PRB {start+1} to {end}")
                             layer_interf_start[layer] = start
                             layer_interf_end[layer] = end
+                            layer_has_interf[layer] = True
                             interf = 1
                     print()
 
@@ -1344,13 +1351,14 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             regions = drop_regions_per_layer[layer]
             if not regions:
                 print("  No Interference Detected.")
-                layer_interf_start[layer] = 0
-                layer_interf_end[layer] = 0
+                # Keep defaults: start=0, end=max_prb (full clean range)
+                layer_has_interf[layer] = False
             else:
                 for start, end in regions:
                     print(f"  Interference Detected from PRB {start+1} to {end}")
                     layer_interf_start[layer] = start
                     layer_interf_end[layer] = end
+                    layer_has_interf[layer] = True
                     interf = 1
             print()
 
@@ -1591,6 +1599,7 @@ def upload():
                 f"layer_{i}": {
                     "start_prb": int(layer_interf_start[i]),
                     "end_prb": int(layer_interf_end[i]),
+                    "has_interference": layer_has_interf[i],
                     "evm_db": float(evm_results[i]) if i < len(evm_results) else 0.0,
                     "ai_evm_db": float(ai_evm_results[i]) if ai_evm_results is not None and i < len(ai_evm_results) else None,
                     "dmrs_evm_db": float(dmrs_evm_results[i]) if dmrs_evm_results is not None and i < len(dmrs_evm_results) else None
@@ -1716,19 +1725,19 @@ def generate_report(data, fname, model_selection=None):
         interf_l3 = "None"
     else:
         link_dir = "Uplink"
-        if (layer_interf_end[0] - layer_interf_start[0] == 0):
+        if not layer_has_interf[0]:
             interf_l0 = "None"
         else:
             interf_l0 = f"Detected in PRBs {layer_interf_start[0]+1}-{layer_interf_end[0]}"
-        if (layer_interf_end[1] - layer_interf_start[1] == 0):
+        if not layer_has_interf[1]:
             interf_l1 = "None"
         else:
             interf_l1 = f"Detected in PRBs {layer_interf_start[1]+1}-{layer_interf_end[1]}"
-        if (layer_interf_end[2] - layer_interf_start[2] == 0):
+        if not layer_has_interf[2]:
             interf_l2 = "None"
         else:
             interf_l2 = f"Detected in PRBs {layer_interf_start[2]+1}-{layer_interf_end[2]}"
-        if (layer_interf_end[3] - layer_interf_start[3] == 0):
+        if not layer_has_interf[3]:
             interf_l3 = "None"
         else:
             interf_l3 = f"Detected in PRBs {layer_interf_start[3]+1}-{layer_interf_end[3]}"
@@ -1808,7 +1817,7 @@ def generate_report(data, fname, model_selection=None):
             'filename': fname,
             'interference': interf,
             'evm': evma_db[0] if evma_db else 'N/A',
-            'layers_affected': sum(1 for i in range(4) if layer_interf_end[i] - layer_interf_start[i] > 0)
+            'layers_affected': sum(1 for i in range(4) if layer_has_interf[i])
         }
 
         slm_response = generate_with_slm(prompt, max_new_tokens=256, analysis_data=analysis_data)
