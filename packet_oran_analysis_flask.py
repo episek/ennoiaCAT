@@ -989,6 +989,26 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 plt.savefig("plot3.png")
             plt.close()
 
+            # Save EVM per PRB per layer to CSV (AI-based blind detection)
+            print("Saving EVM per PRB per layer to evm_per_prb.csv...")
+            evm_df = pd.DataFrame(
+                evm_db_PRB.T,  # Transpose so rows=PRBs, cols=Layers
+                columns=[f'Layer{i}_EVM_dB' for i in range(numLayers)]
+            )
+            evm_df.index.name = 'PRB'
+            evm_df.to_csv('evm_per_prb.csv', float_format='%.2f')
+            print(f"Saved EVM per PRB to evm_per_prb.csv ({evm_db_PRB.shape[1]} PRBs x {numLayers} layers)")
+
+            # Save SNR diff (interference level) per PRB per layer to CSV
+            print("Saving SNR diff per PRB per layer to snr_diff_per_prb.csv...")
+            snr_diff_df = pd.DataFrame(
+                blind_snr_diff.T,  # Transpose so rows=PRBs, cols=Layers
+                columns=[f'Layer{i}_SNR_Diff_dB' for i in range(numLayers)]
+            )
+            snr_diff_df.index.name = 'PRB'
+            snr_diff_df.to_csv('snr_diff_per_prb.csv', float_format='%.2f')
+            print(f"Saved SNR diff per PRB to snr_diff_per_prb.csv ({blind_snr_diff.shape[1]} PRBs x {numLayers} layers)")
+
             # Extract EVM results from blind detection (average per layer)
             for layer in range(numLayers):
                 evm_results[layer] = float(np.mean(evm_db_PRB[layer]))
@@ -1539,6 +1559,9 @@ def upload():
             "detection_mode": detection_mode,
             "interference": int(interf),
             "evm_db": evm_results_native,
+            "evm_per_prb_csv": "evm_per_prb.csv",
+            "snr_per_prb_csv": "snr_per_prb.csv",
+            "snr_diff_per_prb_csv": "snr_diff_per_prb.csv",
             "layers": {
                 f"layer_{i}": {
                     "start_prb": int(layer_interf_start[i]),

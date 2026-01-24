@@ -1592,7 +1592,7 @@ if prompt:
             st.info(f"Status: {progress.get('status', 'Unknown')}")
 
             # Load and display CSV results if available
-            for csv_file in ["data_symbols.csv", "rx_frame_iq_cap.csv"]:
+            for csv_file in ["data_symbols.csv", "rx_frame_iq_cap.csv", "evm_per_prb.csv", "snr_per_prb.csv", "snr_diff_per_prb.csv"]:
                 df = helper.load_analysis_csv(csv_file)
                 if df is not None:
                     with st.expander(f"📁 {csv_file}"):
