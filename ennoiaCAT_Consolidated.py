@@ -89,16 +89,16 @@ elif equipment_type == "ORAN PCAP Analyzer":
     st.sidebar.image('oran_logo.jpeg', width=200)
 
 st.title(f"🗼 Ennoia – {equipment_type} Agentic AI Control & Analysis")
-st.caption("Natural-language controlled RF Spectrum Analyzer (OpenAI / SLM toggle)")
+st.caption(t("Natural-language controlled RF Spectrum Analyzer (OpenAI / SLM toggle)"))
 
 # -----------------------------------------------------------------------------
 # LICENSE CHECK
 # -----------------------------------------------------------------------------
 if not success:
-    st.error("License verification failed.")
+    st.error(t("License verification failed."))
     st.stop()
 else:
-    st.success("Ennoia License verified successfully.")
+    st.success(t("Ennoia License verified successfully."))
 
 # -----------------------------------------------------------------------------
 # IMPORT EQUIPMENT-SPECIFIC MODULES
@@ -175,17 +175,27 @@ language_map = {
 selected_language = st.selectbox("🌐 Select your language", list(language_map.keys()), index=0)
 lang = language_map[selected_language]
 
-if lang and TRANSLATOR_AVAILABLE:
-    text = """
-        Chat and Test with **Ennoia Technologies Connect Platform** ©. All rights reserved.
-        """
-    translated = GoogleTranslator(source='auto', target=lang).translate(text)
-    st.markdown(translated)
-elif lang and not TRANSLATOR_AVAILABLE:
-    st.warning("Translation module not available. Showing English only.")
-    st.markdown("Chat and Test with **Ennoia Technologies Connect Platform** ©. All rights reserved.")
-else:
-    st.markdown("Chat and Test with **Ennoia Technologies Connect Platform** ©. All rights reserved.")
+# -----------------------------------------------------------------------------
+# TRANSLATION HELPER FUNCTION
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600)
+def translate_text(text, target_lang):
+    """Translate text to target language with caching."""
+    if not text or not target_lang or target_lang == "en":
+        return text
+    try:
+        return GoogleTranslator(source='auto', target=target_lang).translate(text)
+    except Exception:
+        return text
+
+def t(text):
+    """Shorthand translation function for UI text."""
+    if not TRANSLATOR_AVAILABLE or not lang or lang == "en":
+        return text
+    return translate_text(text, lang)
+
+# Display welcome message
+st.markdown(t("Chat and Test with **Ennoia Technologies Connect Platform** ©. All rights reserved."))
 
 # -----------------------------------------------------------------------------
 # EQUIPMENT-SPECIFIC SETTINGS & CONNECTION
@@ -258,7 +268,7 @@ elif equipment_type == "Cisco NCS540":
     if serial_ports:
         selected_serial = st.selectbox("Select Serial Port", serial_ports, index=0)
     else:
-        st.error("❌ No USB serial ports found")
+        st.error(t("❌ No USB serial ports found"))
         selected_serial = None
 
     if "conn" not in st.session_state:
@@ -274,12 +284,12 @@ elif equipment_type == "Cisco NCS540":
             st.session_state.conn = NCS540Serial(port=selected_serial, username=username, password=password)
             st.session_state.connected_port = selected_serial
             st.session_state.conn.start_keep_alive(interval=60)
-            st.success(f"✅ NCS540 Connected via {selected_serial} as {username}")
+            st.success(t("✅ NCS540 Connected via") + f" {selected_serial} " + t("as") + f" {username}")
         except Exception as e:
-            st.warning(f"⏳ Waiting for NCS540 to connect...")
+            st.warning(t("⏳ Waiting for NCS540 to connect..."))
 
     if not st.session_state.conn:
-        st.warning("⏳ Waiting for NCS540 to connect. Please press **Connect Serial** to continue.")
+        st.warning(t("⏳ Waiting for NCS540 to connect. Please press **Connect Serial** to continue."))
         st.stop()
 
     helper = CSHelper()
@@ -358,23 +368,23 @@ elif equipment_type == "ORAN PCAP Analyzer":
 # -----------------------------------------------------------------------------
 if helper_class:
     selected_options = helper_class.select_checkboxes() if hasattr(helper_class, 'select_checkboxes') else []
-    st.success(f"You selected: {', '.join(selected_options) if selected_options else 'nothing'}")
+    st.success(t("You selected:") + f" {', '.join(selected_options) if selected_options else t('nothing')}")
 
     if "SLM" in selected_options:
         @st.cache_resource
         def load_peft_model():
             return helper_class.load_lora_model()
 
-        st.write("\n⏳ Working in OFFLINE mode. Loading local LoRA model...")
+        st.write(t("\n⏳ Working in OFFLINE mode. Loading local LoRA model..."))
         tokenizer, peft_model, device = load_peft_model()
 
         if peft_model is None:
-            st.error("❌ Failed to load SLM model (GPU out of memory or model not found)")
-            st.warning("Falling back to template-based report generation")
+            st.error(t("❌ Failed to load SLM model (GPU out of memory or model not found)"))
+            st.warning(t("Falling back to template-based report generation"))
             map_api = None
         else:
-            st.write(f"\n✅ Local SLM model {peft_model.config.name_or_path} loaded")
-            st.write(f"Device is set to use {device}! Let's get to work.\n")
+            st.write(t("\n✅ Local SLM model") + f" {peft_model.config.name_or_path} " + t("loaded"))
+            st.write(t("Device is set to use") + f" {device}! " + t("Let's get to work.\n"))
 
             if equipment_type == "Viavi OneAdvisor":
                 map_api = MapAPI(backend="slm", injected_model=peft_model, injected_tokenizer=tokenizer, max_new_tokens=512, temperature=0.2)
@@ -390,9 +400,9 @@ if helper_class:
             else:
                 return MapAPI()
 
-        st.write("\n⏳ Working in ONLINE mode.")
+        st.write(t("\n⏳ Working in ONLINE mode."))
         map_api = load_openai()
-        st.write(f"\n✅ Online LLM model {st.session_state['openai_model']} loaded. Let's get to work.\n")
+        st.write(t("\n✅ Online LLM model") + f" {st.session_state['openai_model']} " + t("loaded. Let's get to work.\n"))
 
 # -----------------------------------------------------------------------------
 # EQUIPMENT IDENTITY DISPLAY
@@ -736,22 +746,22 @@ if prompt:
             ref_level = 0.0
 
         # Display Configuration
-        st.subheader("🗼 Spectrum Analyzer Configuration")
-        st.success(f"**Configuration for {equipment_type}:**")
-        st.write(f"- **Start Frequency:** {start_hz/1e6:.1f} MHz")
-        st.write(f"- **Stop Frequency:** {stop_hz/1e6:.1f} MHz")
-        st.write(f"- **Center Frequency:** {center_hz/1e6:.1f} MHz")
-        st.write(f"- **Span:** {span_hz/1e6:.1f} MHz")
+        st.subheader(t("🗼 Spectrum Analyzer Configuration"))
+        st.success(t("**Configuration for**") + f" {equipment_type}:")
+        st.write(f"- **{t('Start Frequency')}:** {start_hz/1e6:.1f} MHz")
+        st.write(f"- **{t('Stop Frequency')}:** {stop_hz/1e6:.1f} MHz")
+        st.write(f"- **{t('Center Frequency')}:** {center_hz/1e6:.1f} MHz")
+        st.write(f"- **{t('Span')}:** {span_hz/1e6:.1f} MHz")
         st.write(f"- **RBW:** {rbw/1e3:.1f} kHz")
         st.write(f"- **VBW:** {vbw/1e3:.1f} kHz")
-        st.write(f"- **Reference Level:** {ref_level} dBm")
+        st.write(f"- **{t('Reference Level')}:** {ref_level} dBm")
 
         # Execute Viavi spectrum acquisition
         freqs = []
         trace = []
 
         if not viavi_host:
-            st.error("Enter Viavi IP in sidebar.")
+            st.error(t("Enter Viavi IP in sidebar."))
         else:
             try:
                 # Discover radio SCPI port
@@ -803,7 +813,7 @@ if prompt:
 
                     freqs, trace = one_sweep()
                     if not freqs:
-                        st.warning("No trace received from Viavi.")
+                        st.warning(t("No trace received from Viavi."))
                         break
 
                     all_traces.append(trace)
@@ -875,13 +885,13 @@ if prompt:
                 ra.close()
 
             except Exception as e:
-                st.error(f"Viavi error: {e}")
+                st.error(t("Viavi error:") + f" {e}")
                 freqs, trace = [], []
 
         # -----------------------------------------------------------------------------
         # CELLULAR PEAK TABLE + 5G NR DETECTION
         # -----------------------------------------------------------------------------
-        st.subheader("📶 Cellular Peaks & 5G NR-like Carriers")
+        st.subheader(t("📶 Cellular Peaks & 5G NR-like Carriers"))
 
         if freqs and trace:
             freq_mhz = [f for f in freqs]
@@ -892,19 +902,19 @@ if prompt:
                     {"Frequency (MHz)": freq_mhz[idx], "Power (dBm)": val}
                 )
             if rows:
-                st.write("Strong Peaks:")
+                st.write(t("Strong Peaks:"))
                 df_peaks = pd.DataFrame(rows)
                 st.dataframe(df_peaks)
             else:
-                st.info("No prominent peaks detected.")
+                st.info(t("No prominent peaks detected."))
 
             nr_carriers = detect_5gnr_like_carriers(freqs, trace)
             if nr_carriers:
-                st.write("5G NR-like Carriers (rough RF-only heuristic):")
+                st.write(t("5G NR-like Carriers (rough RF-only heuristic):"))
                 df_nr = pd.DataFrame(nr_carriers)
                 st.dataframe(df_nr)
             else:
-                st.info("Checking for 5G NR carriers.")
+                st.info(t("Checking for 5G NR carriers."))
 
             # CSV exports
             col1, col2 = st.columns(2)
@@ -928,12 +938,12 @@ if prompt:
                         mime="text/csv",
                     )
         else:
-            st.info("No spectrum to analyze.")
+            st.info(t("No spectrum to analyze."))
 
         # -----------------------------------------------------------------------------
         # OPERATOR TABLE MAPPING (reuse TinySAHelper logic)
         # -----------------------------------------------------------------------------
-        st.subheader("🗼 Operator Table (by detected cellular bands)")
+        st.subheader(t("🗼 Operator Table (by detected cellular bands)"))
 
         if freqs and trace:
             # Reuse freq_mhz if it already exists; otherwise compute
@@ -946,7 +956,7 @@ if prompt:
             operator_table = helper.get_operator_frequencies()
 
             if not operator_table:
-                st.warning("operator_table.json not found or invalid – cannot map to operators.")
+                st.warning(t("operator_table.json not found or invalid – cannot map to operators."))
             else:
                 # Use TinySAHelper's peak/band logic on Viavi trace
                 try:
@@ -960,7 +970,7 @@ if prompt:
                     )
                 except Exception as e:
                     op_report = []
-                    st.error(f"Operator analysis error: {e}")
+                    st.error(t("Operator analysis error:") + f" {e}")
 
                 if op_report:
                     df_ops = pd.DataFrame(op_report)
@@ -974,14 +984,14 @@ if prompt:
                         mime="text/csv",
                     )
                 else:
-                    st.info("No strong operator bands detected in the current span.")
+                    st.info(t("No strong operator bands detected in the current span."))
         else:
-            st.info("No RF data available for operator mapping.")
+            st.info(t("No RF data available for operator mapping."))
 
         # -----------------------------------------------------------------------------
         # BANDPOWER MEASUREMENT (USER-SELECTED)
         # -----------------------------------------------------------------------------
-        st.subheader("📐 Bandpower Measurement")
+        st.subheader(t("📐 Bandpower Measurement"))
 
         if freqs and trace:
             col_bp1, col_bp2, col_bp3 = st.columns(3)
@@ -995,33 +1005,33 @@ if prompt:
                     f2_hz = bp_f2_mhz * 1e6
                     bp_dbm = bandpower_linear(freqs, trace, f1_hz, f2_hz)
                     if bp_dbm is None:
-                        st.warning("No data in this band or invalid range.")
+                        st.warning(t("No data in this band or invalid range."))
                     else:
-                        st.success(f"Approx. bandpower in [{bp_f1_mhz:.3f}, {bp_f2_mhz:.3f}] MHz: {bp_dbm:.2f} dBm")
+                        st.success(t("Approx. bandpower in") + f" [{bp_f1_mhz:.3f}, {bp_f2_mhz:.3f}] MHz: {bp_dbm:.2f} dBm")
         else:
-            st.info("Bandpower not available (no trace).")
+            st.info(t("Bandpower not available (no trace)."))
 
-        st.subheader("📶 WiFi-like RF Carriers (from SA trace)")
+        st.subheader(t("📶 WiFi-like RF Carriers (from SA trace)"))
 
         if freqs and trace:
             wifi_rf = detect_wifi_like_carriers(freqs, trace)
             span_bands = classify_span_wifi_bands(freqs)
 
             if span_bands:
-                st.info(f"Current span overlaps WiFi band(s): {', '.join(span_bands)}")
+                st.info(t("Current span overlaps WiFi band(s):") + f" {', '.join(span_bands)}")
 
             if wifi_rf:
                 df_wifi_rf = pd.DataFrame(wifi_rf)
                 st.dataframe(df_wifi_rf)
             else:
-                st.info("No obvious WiFi-like peaks in the current span.")
+                st.info(t("No obvious WiFi-like peaks in the current span."))
         else:
-            st.info("No RF trace to analyze for WiFi-like carriers.")
+            st.info(t("No RF trace to analyze for WiFi-like carriers."))
 
         # -----------------------------------------------------------------------------
         # WIFI SCAN (PC INTERFACE)
         # -----------------------------------------------------------------------------
-        st.subheader("📶 WiFi Scanner (PC interface)")
+        st.subheader(t("📶 WiFi Scanner (PC interface)"))
 
         if freqs and any(f >= 2.39e3 for f in freqs):
             try:
@@ -1046,17 +1056,17 @@ if prompt:
                         )
                     )
                 else:
-                    st.info("No WiFi networks detected.")
+                    st.info(t("No WiFi networks detected."))
             except Exception as e:
-                st.error(f"WiFi scan failed: {e}")
+                st.error(t("WiFi scan failed:") + f" {e}")
         else:
-            st.info("WiFi scan skipped (spectrum not in 2.4/5/6 GHz).")
+            st.info(t("WiFi scan skipped (spectrum not in 2.4/5/6 GHz)."))
 
         # -----------------------------------------------------------------------------
         # TIMER
         # -----------------------------------------------------------------------------
         t.stop()
-        st.write("⏱️ Elapsed:", fmt_seconds(t.elapsed()))
+        st.write(t("⏱️ Elapsed:"), fmt_seconds(t.elapsed()))
 
     elif equipment_type == "Keysight FieldFox":
         # Keysight handling
@@ -1110,7 +1120,7 @@ if prompt:
             if "SLM" in selected_options and map_api is not None:
                 response = map_api.generate_response(chat1)
             elif "SLM" in selected_options and map_api is None:
-                st.warning("SLM model not available. Using template response.")
+                st.warning(t("SLM model not available. Using template response."))
                 response = f"I'm the {equipment_type} assistant. The SLM model is not currently loaded. Please switch to OpenAI mode or check your configuration."
             else:
                 from openai import OpenAI
@@ -1144,7 +1154,7 @@ if prompt:
                 "save": None
             }
 
-            st.write("Extracting scan parameters from query...")
+            st.write(t("Extracting scan parameters from query..."))
             if map_api is not None:
                 few_shot_examples2 = map_api.get_few_shot_examples()
                 system_prompt2 = map_api.get_system_prompt(def_dict, user_input)
@@ -1268,7 +1278,7 @@ if prompt:
             if gcf is not None:
                 st.pyplot(gcf)
         else:
-            st.error("API response is not a valid dictionary. Setting default options.")
+            st.error(t("API response is not a valid dictionary. Setting default options."))
 
         # Operator table analysis
         with st.status("Analyzing cellular frequencies...", expanded=False) as status:
@@ -1289,7 +1299,7 @@ if prompt:
 
                         operator_table = helper.get_operator_frequencies()
                         if not operator_table:
-                            st.error("Operator table could not be loaded.")
+                            st.error(t("Operator table could not be loaded."))
                         else:
                             frequency_report_out = helper.analyze_signal_peaks(sstr, freq_mhz, operator_table)
                             print(f"\nFrequency report: {frequency_report_out}")
@@ -1298,7 +1308,7 @@ if prompt:
                                 status.update(label="No cellular frequencies detected", state="complete")
                             else:
                                 status.update(label="Cellular analysis complete!", state="complete")
-                                st.subheader("🗼 List of Available Cellular Networks")
+                                st.subheader(t("🗼 List of Available Cellular Networks"))
                                 df = pd.DataFrame(frequency_report_out)
                                 st.dataframe(df)
 
@@ -1422,23 +1432,23 @@ if prompt:
         if should_scan_wifi:
             with st.status("Scanning WiFi networks...", expanded=False) as status:
                 try:
-                    st.write("Detecting WiFi networks in 2.4/5/6 GHz bands...")
+                    st.write(t("Detecting WiFi networks in 2.4/5/6 GHz bands..."))
                     df = scan_wifi()
                     if df.empty:
                         status.update(label="No WiFi networks found", state="complete")
                     else:
                         status.update(label=f"Found {len(df)} WiFi networks!", state="complete")
 
-                    st.subheader("📶 List of Available WiFi Networks")
+                    st.subheader(t("📶 List of Available WiFi Networks"))
                     if df.empty:
-                        st.warning("No networks found.")
+                        st.warning(t("No networks found."))
                     else:
-                        st.success(f"Found {len(df)} networks.")
+                        st.success(t("Found") + f" {len(df)} " + t("networks."))
                         st.dataframe(df)
                         st.download_button("📥 Download CSV", data=df.to_csv(index=False), file_name="wifi_scan.csv", mime="text/csv")
                 except Exception as e:
                     status.update(label=f"WiFi scan failed: {str(e)}", state="error")
-                    st.error(f"WiFi scan failed: {e}")
+                    st.error(t("WiFi scan failed:") + f" {e}")
 
         # Timer display
         t.stop()
@@ -1460,7 +1470,7 @@ if prompt:
                 response = map_api.generate_response(chat1)
             elif "SLM" in selected_options and map_api is None:
                 # SLM failed to load, provide fallback response
-                st.warning("SLM model not available. Using template response.")
+                st.warning(t("SLM model not available. Using template response."))
                 response = "I'm the ORAN PCAP Analyzer assistant. The SLM model is not currently loaded. Please use the sidebar to upload a PCAP file and run analysis, or switch to OpenAI mode for conversational responses."
             else:
                 from openai import OpenAI
@@ -1559,14 +1569,14 @@ if prompt:
 
                         # Add note about interference if detected
                         if analysis_data.get('interference', 0):
-                            st.warning("**Note:** Interference detected. Check layer details for affected PRB ranges.")
+                            st.warning(t("**Note:** Interference detected. Check layer details for affected PRB ranges."))
 
                     except json.JSONDecodeError:
                         # Fallback to plain text if not valid JSON
                         st.success(raw_message)
 
             # Display analysis results
-            st.subheader("📊 Analysis Results")
+            st.subheader(t("📊 Analysis Results"))
 
             # Display plots if available
             plots = helper.get_analysis_plots()
@@ -1577,7 +1587,7 @@ if prompt:
                         st.image(path, caption=name.replace(".png", "").replace("_", " ").title())
 
             # Display interference detection results
-            st.subheader("🔍 Interference Detection Results")
+            st.subheader(t("🔍 Interference Detection Results"))
             progress = helper.get_progress()
             st.info(f"Status: {progress.get('status', 'Unknown')}")
 
@@ -1595,7 +1605,7 @@ if prompt:
                         )
 
         elif should_analyze and not pcap_filepath:
-            st.warning("Please upload a PCAP file or enter a file path in the sidebar to start analysis.")
+            st.warning(t("Please upload a PCAP file or enter a file path in the sidebar to start analysis."))
 
         # Timer display
         t.stop()
@@ -1612,7 +1622,7 @@ if prompt:
             if "SLM" in selected_options and map_api is not None:
                 response = map_api.generate_response(chat1)
             elif "SLM" in selected_options and map_api is None:
-                st.warning("SLM model not available. Using template response.")
+                st.warning(t("SLM model not available. Using template response."))
                 response = f"I'm the {equipment_type} assistant. The SLM model is not currently loaded. Please switch to OpenAI mode or check your configuration."
             else:
                 from openai import OpenAI
