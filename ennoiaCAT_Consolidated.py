@@ -1695,17 +1695,23 @@ if prompt:
                 ("snr_per_prb.csv", "SNR per PRB per layer (dB)", "DMRS"),
                 ("snr_diff_per_prb.csv", "Interference level per PRB per layer (dB)", "AI"),
             ]
-            for csv_file, description, mode in csv_files:
-                df = helper.load_analysis_csv(csv_file)
-                if df is not None:
-                    with st.expander(f"📁 {csv_file} - {description} [{mode} mode]"):
-                        st.dataframe(df.head(100))
-                        st.download_button(
-                            f"📥 Download {csv_file}",
-                            data=df.to_csv(index=False),
-                            file_name=csv_file,
-                            mime="text/csv"
-                        )
+            # Check which CSV files are available
+            available_csvs = [(f, d, m) for f, d, m in csv_files if helper.load_analysis_csv(f) is not None]
+            if available_csvs:
+                with st.expander(t("📂 Analysis CSV Files") + f" ({len(available_csvs)} available)", expanded=False):
+                    for csv_file, description, mode in available_csvs:
+                        df = helper.load_analysis_csv(csv_file)
+                        if df is not None:
+                            st.markdown(f"**📁 {csv_file}** - {description} [{mode} mode]")
+                            st.dataframe(df.head(100))
+                            st.download_button(
+                                f"📥 Download {csv_file}",
+                                data=df.to_csv(index=False),
+                                file_name=csv_file,
+                                mime="text/csv",
+                                key=f"download_{csv_file}"
+                            )
+                            st.divider()
 
         elif should_analyze and not pcap_filepath:
             st.warning(t("Please upload a PCAP file or enter a file path in the sidebar to start analysis."))
