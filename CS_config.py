@@ -11,24 +11,36 @@ from peft import PeftModel
 from serial.tools import list_ports
 #from RsInstrument import *
 import matplotlib.pyplot as plt
-import time
 import streamlit as st
 import csv
 import numpy as np
 from scipy.signal import find_peaks
 import struct
 import pandas as pd
-from deep_translator import GoogleTranslator
-import streamlit as st
-from deep_translator import GoogleTranslator
+try:
+    from deep_translator import GoogleTranslator
+    TRANSLATOR_AVAILABLE = True
+except ImportError:
+    TRANSLATOR_AVAILABLE = False
+    GoogleTranslator = None
 #import cgi
 import sys
 import tempfile
 from PIL import Image
-from scapy.all import rdpcap, sendp, sendpfast, get_if_list, get_if_addr, get_if_hwaddr
+try:
+    from scapy.all import rdpcap, sendp, sendpfast, get_if_list, get_if_addr, get_if_hwaddr
+    SCAPY_AVAILABLE = True
+except ImportError:
+    SCAPY_AVAILABLE = False
+    rdpcap = sendp = sendpfast = get_if_list = get_if_addr = get_if_hwaddr = None
 import statistics
 #import matplotlib.pyplot as plt
-import pyshark
+try:
+    import pyshark
+    PYSHARK_AVAILABLE = True
+except ImportError:
+    PYSHARK_AVAILABLE = False
+    pyshark = None
 import psutil, socket
 #from streamlit_autorefresh import st_autorefresh
 
@@ -115,6 +127,7 @@ class CSHelper:
         ]
         return few_shot_examples      
         
+    @staticmethod
     def select_checkboxes():
         st.markdown("### Select your model type")
 
@@ -143,10 +156,11 @@ class CSHelper:
         # After submission
         return st.session_state.selected
 
+    @staticmethod
     def load_lora_model(base_model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", lora_path="./tinyllama_CS_lora"):
         """
         Loads a base language model with LoRA weights and returns the tokenizer and the merged model.
-        
+
         Args:
             base_model_name (str): The name or path of the base model.
             lora_path (str): Path to the directory containing LoRA weights.
@@ -270,6 +284,7 @@ class CSHelper:
 
         return tokenizer, peft_model, base_model
 
+    @staticmethod
     def load_OpenAI_model():
 
         from openai import OpenAI
@@ -373,7 +388,7 @@ class CSHelper:
             freq_domain_power = 10*np.log10(np.sum(np.abs(fft_data)**2)/N)  # Power in frequency domain
             #st.write(f"Freq Domain Power: {freq_domain_power}")
             text = f"Detected high DC component of > 60dB above noise floor. Suppressed the DC Component"
-            translated = GoogleTranslator(source='auto', target=lang).translate(text)
+            translated = GoogleTranslator(source='auto', target=lang).translate(text) if TRANSLATOR_AVAILABLE else text
             #st.write(text)        
 
             fig, ax = plt.subplots(figsize=(10, 4))
@@ -425,7 +440,7 @@ class CSHelper:
             #ip = "192.168.1.101"  # IP address of the system
             #uribase = "http://"+ip+"/api/v1/"
             text = ("Started Loading the PCAP file")
-            translated = GoogleTranslator(source='auto', target=lang).translate(text)
+            translated = GoogleTranslator(source='auto', target=lang).translate(text) if TRANSLATOR_AVAILABLE else text
             st.write(translated)
 
             #pcapfile = "oran_uplane_output_interf_det_awgn_new_DL.pcap"

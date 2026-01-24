@@ -21,9 +21,7 @@ try:
         success = lic.verify_license_file()
 except Exception as e:
     print(f"License check error: {e}")
-    success = 1  # Override for development
-
-success = 1  # Override for development
+    success = False
 
 # -----------------------------------------------------------------------------
 # COMMON IMPORTS
@@ -72,7 +70,8 @@ equipment_type = st.sidebar.selectbox(
         "Aukua XGA4250",
         "Cisco NCS540",
         "Rohde & Schwarz NRQ6",
-        "tinySA"
+        "tinySA",
+        "ORAN PCAP Analyzer"
     ]
 )
 
@@ -86,6 +85,8 @@ elif equipment_type == "Aukua XGA4250":
     st.sidebar.image('aukua rgb high.jpg', width=200)
 elif equipment_type == "Cisco NCS540":
     st.sidebar.image('cisco_logo.png', width=200)
+elif equipment_type == "ORAN PCAP Analyzer":
+    st.sidebar.image('oran_logo.jpeg', width=200)
 
 st.title(f"🗼 Ennoia – {equipment_type} Agentic AI Control & Analysis")
 st.caption("Natural-language controlled RF Spectrum Analyzer (OpenAI / SLM toggle)")
@@ -145,6 +146,13 @@ elif equipment_type == "tinySA":
     from tinySA_config import TinySAHelper
     import tinySA
     helper_class = TinySAHelper
+
+elif equipment_type == "ORAN PCAP Analyzer":
+    from map_api import MapAPI
+    from ORAN_config import ORANHelper
+    from ORAN_config import blind_interference_detection, generate_dmrs_type1_standard
+    import requests
+    helper_class = ORANHelper
 
 # -----------------------------------------------------------------------------
 # LANGUAGE SELECTION
@@ -233,7 +241,7 @@ elif equipment_type == "Keysight FieldFox":
         st.sidebar.success(f"Connected to: {idn.strip()}")
         inst.write(":INSTrument:SELect 'SA'")
     except Exception as e:
-        st.sidebar.error(f"⚠️ FieldFox not connected: {e}")
+        st.sidebar.warning(f"⏳ Waiting for FieldFox to connect...")
 
 elif equipment_type == "Aukua XGA4250":
     # Aukua-specific settings
@@ -268,10 +276,10 @@ elif equipment_type == "Cisco NCS540":
             st.session_state.conn.start_keep_alive(interval=60)
             st.success(f"✅ NCS540 Connected via {selected_serial} as {username}")
         except Exception as e:
-            st.error(f"❌ Failed to connect: {e}")
+            st.warning(f"⏳ Waiting for NCS540 to connect...")
 
     if not st.session_state.conn:
-        st.warning("⚠️ Not connected. Please press **Connect Serial** to continue.")
+        st.warning("⏳ Waiting for NCS540 to connect. Please press **Connect Serial** to continue.")
         st.stop()
 
     helper = CSHelper()
@@ -285,7 +293,7 @@ elif equipment_type == "Rohde & Schwarz NRQ6":
         st.sidebar.success(f"Connected to: {nrq.query('*IDN?')}")
         st.sidebar.write(f"Options: {nrq.query('*OPT?')}")
     except Exception as e:
-        st.sidebar.error(f"Failed to connect: {e}")
+        st.sidebar.warning(f"⏳ Waiting for NRQ6 to connect...")
 
     helper = RSHelper()
 
@@ -294,6 +302,56 @@ elif equipment_type == "tinySA":
     helper = TinySAHelper()
     if "tinySA_port" not in st.session_state:
         st.session_state.tinySA_port = helper.getport()
+
+elif equipment_type == "ORAN PCAP Analyzer":
+    # ORAN PCAP Analyzer settings
+    st.sidebar.subheader("📡 ORAN Analysis Parameters")
+
+    # Flask server URL configuration
+    flask_host = st.sidebar.text_input("Flask Server Host", value="127.0.0.1")
+    flask_port = st.sidebar.number_input("Flask Server Port", value=5002, min_value=1024, max_value=65535)
+
+    st.sidebar.subheader("📊 5G NR Parameters")
+    oran_n_id = st.sidebar.number_input("N_ID (Cell ID)", value=100, min_value=0, max_value=1007)
+    oran_nscid = st.sidebar.selectbox("nSCID", [0, 1], index=0)
+    oran_bandwidth = st.sidebar.selectbox("Bandwidth (MHz)", [5, 10, 15, 20, 50, 100], index=5)
+    oran_scs = st.sidebar.selectbox("SCS (kHz)", [15, 30], index=1)
+    oran_layers = st.sidebar.selectbox("Number of Layers", [1, 2, 4], index=2)
+    oran_link = st.sidebar.selectbox("Link Direction", ["Uplink", "Downlink"], index=0)
+
+    st.sidebar.subheader("📍 Frame Position")
+    oran_subframe = st.sidebar.selectbox("Subframe (0-9)", list(range(10)), index=2)
+    oran_slot = st.sidebar.selectbox("Slot (0-1)", [0, 1], index=0)
+
+    st.sidebar.subheader("🔍 Detection Mode")
+    detection_mode = st.sidebar.selectbox(
+        "Interference Detection Method",
+        ["DMRS-Based (Standard)", "AI-Based Blind Detection", "Both"],
+        index=0
+    )
+
+    helper = ORANHelper()
+
+    # Check Flask server status
+    st.sidebar.subheader("🔌 Flask Server Status")
+    if helper.check_flask_server():
+        st.sidebar.success("Flask server is running")
+    else:
+        st.sidebar.warning("Flask server not detected. Please start packet_oran_analysis_flask.py")
+        st.sidebar.code("python packet_oran_analysis_flask.py", language="bash")
+
+    # File upload section
+    st.sidebar.subheader("📁 PCAP File")
+    uploaded_pcap = st.sidebar.file_uploader("Upload PCAP file", type=["pcap", "pcapng"])
+    pcap_filepath = st.sidebar.text_input("Or enter PCAP file path", value="")
+
+    if uploaded_pcap is not None:
+        # Save uploaded file temporarily
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pcap') as tmp_file:
+            tmp_file.write(uploaded_pcap.read())
+            pcap_filepath = tmp_file.name
+            st.sidebar.success(f"File uploaded: {uploaded_pcap.name}")
 
 # -----------------------------------------------------------------------------
 # AI MODEL SELECTION (COMMON)
@@ -309,13 +367,19 @@ if helper_class:
 
         st.write("\n⏳ Working in OFFLINE mode. Loading local LoRA model...")
         tokenizer, peft_model, device = load_peft_model()
-        st.write(f"\n✅ Local SLM model {peft_model.config.name_or_path} loaded")
-        st.write(f"Device is set to use {device}! Let's get to work.\n")
 
-        if equipment_type == "Viavi OneAdvisor":
-            map_api = MapAPI(backend="slm", injected_model=peft_model, injected_tokenizer=tokenizer, max_new_tokens=512, temperature=0.2)
+        if peft_model is None:
+            st.error("❌ Failed to load SLM model (GPU out of memory or model not found)")
+            st.warning("Falling back to template-based report generation")
+            map_api = None
         else:
-            map_api = MapAPI(peft_model, tokenizer)
+            st.write(f"\n✅ Local SLM model {peft_model.config.name_or_path} loaded")
+            st.write(f"Device is set to use {device}! Let's get to work.\n")
+
+            if equipment_type == "Viavi OneAdvisor":
+                map_api = MapAPI(backend="slm", injected_model=peft_model, injected_tokenizer=tokenizer, max_new_tokens=512, temperature=0.2)
+            else:
+                map_api = MapAPI(peft_model, tokenizer)
     else:
         @st.cache_resource
         def load_openai():
@@ -608,7 +672,10 @@ if prompt:
             {"role": "system", "content": f"You are Ennoia AI, an assistant for RF spectrum analysis using {equipment_type}. Default frequency range is 300 MHz to 900 MHz (600 MHz center, 600 MHz span). When asked about configuration, always mention these defaults."},
             {"role": "user", "content": prompt},
         ]
-        response = map_api.generate_response(chat1)
+        if map_api is not None:
+            response = map_api.generate_response(chat1)
+        else:
+            response = f"I'm the {equipment_type} assistant. The AI model is not currently loaded. Please check your configuration."
 
         with st.chat_message("assistant"):
             st.markdown(response)
@@ -619,7 +686,10 @@ if prompt:
             {"role": "system", "content": "Output ONLY a JSON object with optional keys: start, stop, center, span, rbw, vbw, ref_level. Use units like '600 MHz', '3.5 GHz' if helpful."},
             {"role": "user", "content": prompt},
         ]
-        api_raw = map_api.generate_response(api_chat)
+        if map_api is not None:
+            api_raw = map_api.generate_response(api_chat)
+        else:
+            api_raw = "{}"
 
         api_dict = {}
         try:
@@ -1037,8 +1107,11 @@ if prompt:
 
             chat1 = [{"role": "system", "content": system_prompt}] + few_shot_examples + [{"role": "user", "content": user_input}]
 
-            if "SLM" in selected_options:
+            if "SLM" in selected_options and map_api is not None:
                 response = map_api.generate_response(chat1)
+            elif "SLM" in selected_options and map_api is None:
+                st.warning("SLM model not available. Using template response.")
+                response = f"I'm the {equipment_type} assistant. The SLM model is not currently loaded. Please switch to OpenAI mode or check your configuration."
             else:
                 from openai import OpenAI
                 client, ai_model = helper_class.load_OpenAI_model()
@@ -1072,12 +1145,18 @@ if prompt:
             }
 
             st.write("Extracting scan parameters from query...")
-            few_shot_examples2 = map_api.get_few_shot_examples()
-            system_prompt2 = map_api.get_system_prompt(def_dict, user_input)
+            if map_api is not None:
+                few_shot_examples2 = map_api.get_few_shot_examples()
+                system_prompt2 = map_api.get_system_prompt(def_dict, user_input)
+            else:
+                few_shot_examples2 = []
+                system_prompt2 = "Extract scan parameters as JSON."
             chat2 = [{"role": "system", "content": system_prompt2}] + few_shot_examples2 + [{"role": "user", "content": user_input}]
 
-            if "SLM" in selected_options:
+            if "SLM" in selected_options and map_api is not None:
                 api_str = map_api.generate_response(chat2)
+            elif "SLM" in selected_options and map_api is None:
+                api_str = "{}"
             else:
                 openAImessage = client.chat.completions.create(
                     model=st.session_state["openai_model"],
@@ -1119,7 +1198,6 @@ if prompt:
             if isinstance(value, str):
                 value = value.strip().lower()
                 # Extract number and unit
-                import re
                 match = re.match(r'([\d.]+)\s*(ghz|mhz|hz)?', value)
                 if match:
                     num = float(match.group(1))
@@ -1145,7 +1223,6 @@ if prompt:
 
             # Validation: Check if user input mentions higher MHz/GHz but AI extracted lower value
             # This catches cases where AI extracts "240" from "2400"
-            import re
             freq_mentions = re.findall(r'(\d+)\s*(ghz|mhz)', user_input.lower())
             if freq_mentions and len(freq_mentions) >= 1:
                 # First frequency mention likely corresponds to start
@@ -1242,7 +1319,7 @@ if prompt:
                     return (freq - 5000) // 5
                 elif 5955 <= freq <= 7115:
                     return (freq - 5950) // 5 + 1
-            except:
+            except (TypeError, ValueError):
                 pass
             return None
 
@@ -1257,14 +1334,14 @@ if prompt:
                     return "6 GHz"
                 else:
                     return "Unknown"
-            except:
+            except (TypeError, ValueError):
                 pass
             return None
 
         def is_dfs_channel(channel):
             try:
                 ch = int(channel)
-            except:
+            except (TypeError, ValueError):
                 return False
             if 52 <= ch <= 64 or 100 <= ch <= 144:
                 return True
@@ -1273,7 +1350,7 @@ if prompt:
         def infer_bandwidth(channel, radio_type):
             try:
                 ch = int(channel)
-            except:
+            except (TypeError, ValueError):
                 return "Unknown"
             rt = radio_type.lower()
             if ch <= 14:
@@ -1367,6 +1444,163 @@ if prompt:
         t.stop()
         st.write(f"⏱️ Elapsed: {fmt_seconds(t.elapsed())}")
 
+    elif equipment_type == "ORAN PCAP Analyzer":
+        # ORAN PCAP Analyzer handling
+        from timer import Timer, fmt_seconds
+        t = Timer()
+        t.start()
+
+        with st.chat_message("assistant"):
+            # Stage 1: Conversational AI response
+            system_prompt = helper.get_system_prompt()
+            few_shot_examples = helper.get_few_shot_examples()
+            chat1 = [{"role": "system", "content": system_prompt}] + few_shot_examples + [{"role": "user", "content": prompt}]
+
+            if "SLM" in selected_options and map_api is not None:
+                response = map_api.generate_response(chat1)
+            elif "SLM" in selected_options and map_api is None:
+                # SLM failed to load, provide fallback response
+                st.warning("SLM model not available. Using template response.")
+                response = "I'm the ORAN PCAP Analyzer assistant. The SLM model is not currently loaded. Please use the sidebar to upload a PCAP file and run analysis, or switch to OpenAI mode for conversational responses."
+            else:
+                from openai import OpenAI
+                client, ai_model = helper_class.load_OpenAI_model()
+                openAImessage = client.chat.completions.create(
+                    model=st.session_state["openai_model"],
+                    messages=chat1,
+                    temperature=0,
+                    max_tokens=500,
+                    frequency_penalty=1,
+                    stream=False
+                )
+                response = openAImessage.choices[0].message.content
+
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+        # Check for analysis commands
+        prompt_lower = prompt.lower()
+        should_analyze = any(word in prompt_lower for word in ["analyze", "process", "detect", "check", "run", "start"])
+
+        if should_analyze and pcap_filepath:
+            with st.status("Analyzing ORAN PCAP file...", expanded=True) as status:
+                st.write(f"File: {pcap_filepath}")
+                st.write(f"Parameters: N_ID={oran_n_id}, nSCID={oran_nscid}, BW={oran_bandwidth}MHz, SCS={oran_scs}kHz")
+                st.write(f"Frame Position: Subframe={oran_subframe}, Slot={oran_slot}")
+                st.write(f"Detection Mode: {detection_mode}")
+
+                # Send to Flask server
+                params = {
+                    "N_ID": int(oran_n_id),
+                    "nSCID": int(oran_nscid),
+                    "bandwidth": oran_bandwidth,
+                    "scs": oran_scs,
+                    "layers": oran_layers,
+                    "link": oran_link,
+                    "subframe": oran_subframe,
+                    "slot": oran_slot,
+                    "detection_mode": detection_mode
+                }
+
+                result = helper.analyze_pcap(pcap_filepath, params)
+
+                if "error" in result:
+                    status.update(label=f"Analysis failed: {result['error']}", state="error")
+                    st.error(result["error"])
+                else:
+                    status.update(label="Analysis complete!", state="complete")
+
+                    # Parse and format the result as markdown
+                    raw_message = result.get("message", "")
+                    try:
+                        # Try to parse JSON from the message
+                        analysis_data = json.loads(raw_message)
+
+                        # Get detection mode from response (fallback to local variable)
+                        response_detection_mode = analysis_data.get('detection_mode', detection_mode)
+
+                        # Format as markdown
+                        md_output = f"""
+## Detection Mode: {response_detection_mode}
+
+### Analysis Summary
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✓ Success |
+| **Message** | {analysis_data.get('message', 'Analysis completed')} |
+| **Detection Method** | {response_detection_mode} |
+| **Interference Detected** | {'Yes' if analysis_data.get('interference', 0) else 'No'} ({analysis_data.get('interference', 0)}) |
+| **CSV File** | `{analysis_data.get('csv_file', 'N/A')}` |
+
+### EVM Results (dB)
+
+| Layer | EVM (dB) |
+|-------|----------|
+"""
+                        evm_values = analysis_data.get('evm_db', [])
+                        for i, evm in enumerate(evm_values):
+                            md_output += f"| Layer {i} | {evm:.2f} |\n"
+
+                        # Add layer details if available
+                        layers_data = analysis_data.get('layers', {})
+                        if layers_data:
+                            md_output += """
+### Layer Details
+
+| Layer | Start PRB | End PRB | EVM (dB) |
+|-------|-----------|---------|----------|
+"""
+                            for layer_name, layer_data in layers_data.items():
+                                layer_num = layer_name.replace('layer_', '')
+                                md_output += f"| Layer {layer_num} | {layer_data.get('start_prb', 'N/A')+1} | {layer_data.get('end_prb', 'N/A')} | {layer_data.get('evm_db', 0):.2f} |\n"
+
+                        st.markdown(md_output)
+
+                        # Add note about interference if detected
+                        if analysis_data.get('interference', 0):
+                            st.warning("**Note:** Interference detected. Check layer details for affected PRB ranges.")
+
+                    except json.JSONDecodeError:
+                        # Fallback to plain text if not valid JSON
+                        st.success(raw_message)
+
+            # Display analysis results
+            st.subheader("📊 Analysis Results")
+
+            # Display plots if available
+            plots = helper.get_analysis_plots()
+            if plots:
+                cols = st.columns(len(plots))
+                for i, (name, path) in enumerate(plots.items()):
+                    with cols[i]:
+                        st.image(path, caption=name.replace(".png", "").replace("_", " ").title())
+
+            # Display interference detection results
+            st.subheader("🔍 Interference Detection Results")
+            progress = helper.get_progress()
+            st.info(f"Status: {progress.get('status', 'Unknown')}")
+
+            # Load and display CSV results if available
+            for csv_file in ["data_symbols.csv", "rx_frame_iq_cap.csv"]:
+                df = helper.load_analysis_csv(csv_file)
+                if df is not None:
+                    with st.expander(f"📁 {csv_file}"):
+                        st.dataframe(df.head(100))
+                        st.download_button(
+                            f"📥 Download {csv_file}",
+                            data=df.to_csv(index=False),
+                            file_name=csv_file,
+                            mime="text/csv"
+                        )
+
+        elif should_analyze and not pcap_filepath:
+            st.warning("Please upload a PCAP file or enter a file path in the sidebar to start analysis.")
+
+        # Timer display
+        t.stop()
+        st.write(f"⏱️ Elapsed: {fmt_seconds(t.elapsed())}")
+
     else:
         # Generic equipment handling
         if helper_class:
@@ -1375,8 +1609,11 @@ if prompt:
 
             chat1 = [{"role": "system", "content": system_prompt}] + few_shot_examples + [{"role": "user", "content": prompt}]
 
-            if "SLM" in selected_options:
+            if "SLM" in selected_options and map_api is not None:
                 response = map_api.generate_response(chat1)
+            elif "SLM" in selected_options and map_api is None:
+                st.warning("SLM model not available. Using template response.")
+                response = f"I'm the {equipment_type} assistant. The SLM model is not currently loaded. Please switch to OpenAI mode or check your configuration."
             else:
                 from openai import OpenAI
                 client, ai_model = helper_class.load_OpenAI_model()
