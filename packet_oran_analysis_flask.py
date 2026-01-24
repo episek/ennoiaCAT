@@ -988,12 +988,38 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 plt.legend(loc='lower left', fontsize=8)
 
             plt.tight_layout()
-            # Save as plot2.png for AI-only mode, plot3.png for Both mode
+            # Save as plot2.png for AI-only mode, plot4.png for Both mode
             if detection_mode == "AI-Based Blind Detection":
                 plt.savefig("plot2.png")
             else:
-                plt.savefig("plot3.png")
+                plt.savefig("plot4.png")  # AI interference detection for Both mode
             plt.close()
+
+            # For Both mode, also create AI constellation plot (plot3.png)
+            if detection_mode == "Both":
+                plt.figure(figsize=(12, 6))
+                for layer in range(numLayers):
+                    plt.subplot(2, 2, layer + 1)
+                    # Layers 0,1 use even REs, layers 2,3 use odd REs
+                    if layer in [0, 1]:
+                        dmrs_data = rx_frame[start_slot, 2, layer, ::2]
+                    else:
+                        dmrs_data = rx_frame[start_slot, 2, layer, 1::2]
+                    # Apply phase correction
+                    corrected = correct_qpsk_phase_drift(dmrs_data) * np.exp(-1j * np.pi/4)
+                    corrected = correct_qpsk_phase_drift(corrected) * np.exp(-1j * np.pi/4)
+                    corrected /= np.sqrt((np.abs(corrected)**2).mean() + 1e-12)
+                    plt.plot(np.real(corrected), np.imag(corrected), '.', alpha=0.5)
+                    plt.title(f'AI Phase-Corrected DMRS - Layer {layer} - EVM: {evm_results[layer]:.2f} dB')
+                    plt.xlabel('I')
+                    plt.ylabel('Q')
+                    plt.grid(True)
+                    plt.axis('equal')
+                    plt.xlim(-2, 2)
+                    plt.ylim(-2, 2)
+                plt.tight_layout()
+                plt.savefig("plot3.png")  # AI constellation for Both mode
+                plt.close()
 
             # Save EVM per PRB per layer to CSV (AI-based blind detection)
             print("Saving EVM per PRB per layer to evm_per_prb.csv...")

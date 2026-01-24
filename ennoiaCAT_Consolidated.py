@@ -1578,23 +1578,36 @@ if prompt:
                         layers_data = analysis_data.get('layers', {})
                         if layers_data:
                             if ai_evm and dmrs_evm:
+                                # Both mode - show two separate tables
                                 md_output += """
-### Layer Details
+### DMRS-Based Layer Details
 
-| Layer | Start PRB | End PRB | AI EVM (dB) | DMRS EVM (dB) |
-|-------|-----------|---------|-------------|---------------|
+| Layer | Start PRB | End PRB | DMRS EVM (dB) |
+|-------|-----------|---------|---------------|
+"""
+                                for layer_name, layer_data in layers_data.items():
+                                    layer_num = layer_name.replace('layer_', '')
+                                    dmrs_val = layer_data.get('dmrs_evm_db')
+                                    dmrs_str = f"{dmrs_val:.2f}" if dmrs_val is not None else "N/A"
+                                    has_interf = layer_data.get('has_interference', False)
+                                    start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
+                                    end_prb = layer_data.get('end_prb', 'N/A')
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {dmrs_str} |\n"
+
+                                md_output += """
+### AI-Based Layer Details
+
+| Layer | Start PRB | End PRB | AI EVM (dB) |
+|-------|-----------|---------|-------------|
 """
                                 for layer_name, layer_data in layers_data.items():
                                     layer_num = layer_name.replace('layer_', '')
                                     ai_val = layer_data.get('ai_evm_db')
-                                    dmrs_val = layer_data.get('dmrs_evm_db')
                                     ai_str = f"{ai_val:.2f}" if ai_val is not None else "N/A"
-                                    dmrs_str = f"{dmrs_val:.2f}" if dmrs_val is not None else "N/A"
-                                    # Start PRB: +1 (1-indexed) when interference, 0-indexed when no interference
                                     has_interf = layer_data.get('has_interference', False)
                                     start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
                                     end_prb = layer_data.get('end_prb', 'N/A')
-                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {ai_str} | {dmrs_str} |\n"
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {ai_str} |\n"
                             else:
                                 md_output += """
 ### Layer Details
@@ -1626,10 +1639,45 @@ if prompt:
             # Display plots if available
             plots = helper.get_analysis_plots()
             if plots:
-                cols = st.columns(len(plots))
-                for i, (name, path) in enumerate(plots.items()):
-                    with cols[i]:
-                        st.image(path, caption=name.replace(".png", "").replace("_", " ").title())
+                # Check if we have both DMRS and AI plots (Both mode)
+                has_dmrs_plots = "plot1.png" in plots or "plot2.png" in plots
+                has_ai_plots = "plot3.png" in plots or "plot4.png" in plots
+
+                if has_dmrs_plots and has_ai_plots:
+                    # Both mode - show plots in two groups
+                    st.markdown("#### " + t("DMRS-Based Detection Plots"))
+                    dmrs_plots = {k: v for k, v in plots.items() if k in ["plot1.png", "plot2.png"]}
+                    if dmrs_plots:
+                        cols = st.columns(len(dmrs_plots))
+                        plot_labels = {
+                            "plot1.png": "DMRS Constellation",
+                            "plot2.png": "DMRS SNR Detection"
+                        }
+                        for i, (name, path) in enumerate(dmrs_plots.items()):
+                            with cols[i]:
+                                st.image(path, caption=plot_labels.get(name, name))
+
+                    st.markdown("#### " + t("AI-Based Detection Plots"))
+                    ai_plots = {k: v for k, v in plots.items() if k in ["plot3.png", "plot4.png"]}
+                    if ai_plots:
+                        cols = st.columns(len(ai_plots))
+                        plot_labels = {
+                            "plot3.png": "AI Phase-Corrected Constellation",
+                            "plot4.png": "AI Interference Detection"
+                        }
+                        for i, (name, path) in enumerate(ai_plots.items()):
+                            with cols[i]:
+                                st.image(path, caption=plot_labels.get(name, name))
+                else:
+                    # Single mode - show all plots in one row
+                    cols = st.columns(len(plots))
+                    plot_labels = {
+                        "plot1.png": "Constellation",
+                        "plot2.png": "Interference Detection"
+                    }
+                    for i, (name, path) in enumerate(plots.items()):
+                        with cols[i]:
+                            st.image(path, caption=plot_labels.get(name, name.replace(".png", "").replace("_", " ").title()))
 
             # Display interference detection results
             st.subheader(t("🔍 Interference Detection Results"))

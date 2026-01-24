@@ -283,10 +283,14 @@ Both methods output:
             plot_dir: Directory where plots are saved
 
         Returns:
-            dict with plot file paths
+            dict with plot file paths organized by detection mode
+            - DMRS mode: plot1.png (constellation), plot2.png (SNR detection)
+            - AI mode: plot1.png (constellation), plot2.png (interference detection)
+            - Both mode: plot1.png, plot2.png (DMRS), plot3.png, plot4.png (AI)
         """
         plots = {}
-        plot_files = ["plot1.png", "plot2.png"]
+        # Check for all possible plot files
+        plot_files = ["plot1.png", "plot2.png", "plot3.png", "plot4.png"]
 
         for pf in plot_files:
             path = os.path.join(plot_dir, pf)
