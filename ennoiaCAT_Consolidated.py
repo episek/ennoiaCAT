@@ -59,6 +59,46 @@ st.cache_resource.clear()
 st.set_page_config(page_title="Ennoia Equipment Controller", page_icon="🗼")
 
 # -----------------------------------------------------------------------------
+# LANGUAGE SELECTION (must be early for t() function)
+# -----------------------------------------------------------------------------
+language_map = {
+    "🌐 Select language": None,
+    "English": "en",
+    "Français": "fr",
+    "Español": "es",
+    "Deutsch": "de",
+    "עברית": "he",
+    "हिन्दी": "hi",
+    "العربية": "ar",
+    "Русский": "ru",
+    "中文": "zh-cn",
+    "日本語": "ja",
+    "한국어": "ko"
+}
+
+selected_language = st.sidebar.selectbox("🌐 Language", list(language_map.keys()), index=0)
+lang = language_map[selected_language]
+
+# -----------------------------------------------------------------------------
+# TRANSLATION HELPER FUNCTION
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600)
+def translate_text(text, target_lang):
+    """Translate text to target language with caching."""
+    if not text or not target_lang or target_lang == "en":
+        return text
+    try:
+        return GoogleTranslator(source='auto', target=target_lang).translate(text)
+    except Exception:
+        return text
+
+def t(text):
+    """Shorthand translation function for UI text."""
+    if not TRANSLATOR_AVAILABLE or not lang or lang == "en":
+        return text
+    return translate_text(text, lang)
+
+# -----------------------------------------------------------------------------
 # EQUIPMENT SELECTION
 # -----------------------------------------------------------------------------
 st.sidebar.title("Equipment Selection")
@@ -153,46 +193,6 @@ elif equipment_type == "ORAN PCAP Analyzer":
     from ORAN_config import blind_interference_detection, generate_dmrs_type1_standard
     import requests
     helper_class = ORANHelper
-
-# -----------------------------------------------------------------------------
-# LANGUAGE SELECTION
-# -----------------------------------------------------------------------------
-language_map = {
-    "🌐 Select language": None,
-    "English": "en",
-    "Français": "fr",
-    "Español": "es",
-    "Deutsch": "de",
-    "עברית": "he",
-    "हिन्दी": "hi",
-    "العربية": "ar",
-    "Русский": "ru",
-    "中文": "zh-cn",
-    "日本語": "ja",
-    "한국어": "ko"
-}
-
-selected_language = st.selectbox("🌐 Select your language", list(language_map.keys()), index=0)
-lang = language_map[selected_language]
-
-# -----------------------------------------------------------------------------
-# TRANSLATION HELPER FUNCTION
-# -----------------------------------------------------------------------------
-@st.cache_data(ttl=3600)
-def translate_text(text, target_lang):
-    """Translate text to target language with caching."""
-    if not text or not target_lang or target_lang == "en":
-        return text
-    try:
-        return GoogleTranslator(source='auto', target=target_lang).translate(text)
-    except Exception:
-        return text
-
-def t(text):
-    """Shorthand translation function for UI text."""
-    if not TRANSLATOR_AVAILABLE or not lang or lang == "en":
-        return text
-    return translate_text(text, lang)
 
 # Display welcome message
 st.markdown(t("Chat and Test with **Ennoia Technologies Connect Platform** ©. All rights reserved."))
