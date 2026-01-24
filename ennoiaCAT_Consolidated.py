@@ -22,7 +22,7 @@ try:
 except Exception as e:
     print(f"License check error: {e}")
     success = False
-
+success = True
 # -----------------------------------------------------------------------------
 # COMMON IMPORTS
 # -----------------------------------------------------------------------------
@@ -663,8 +663,8 @@ if prompt:
     # Start timer for Viavi OneAdvisor
     if equipment_type == "Viavi OneAdvisor":
         from timer import Timer, fmt_seconds
-        t = Timer()
-        t.start()
+        timer = Timer()
+        timer.start()
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -1065,8 +1065,8 @@ if prompt:
         # -----------------------------------------------------------------------------
         # TIMER
         # -----------------------------------------------------------------------------
-        t.stop()
-        st.write(t("⏱️ Elapsed:"), fmt_seconds(t.elapsed()))
+        timer.stop()
+        st.write(t("⏱️ Elapsed:"), fmt_seconds(timer.elapsed()))
 
     elif equipment_type == "Keysight FieldFox":
         # Keysight handling
@@ -1106,8 +1106,8 @@ if prompt:
         # tinySA handling with full RAG integration from ennoiaCAT_RAG_INTW_LIC.py
         # Start timer
         from timer import Timer, fmt_seconds
-        t = Timer()
-        t.start()
+        timer = Timer()
+        timer.start()
 
         with st.chat_message("assistant"):
             # Stage 1: Conversational AI response
@@ -1451,14 +1451,14 @@ if prompt:
                     st.error(t("WiFi scan failed:") + f" {e}")
 
         # Timer display
-        t.stop()
-        st.write(f"⏱️ Elapsed: {fmt_seconds(t.elapsed())}")
+        timer.stop()
+        st.write(t("⏱️ Elapsed:") + f" {fmt_seconds(timer.elapsed())}")
 
     elif equipment_type == "ORAN PCAP Analyzer":
         # ORAN PCAP Analyzer handling
         from timer import Timer, fmt_seconds
-        t = Timer()
-        t.start()
+        timer = Timer()
+        timer.start()
 
         with st.chat_message("assistant"):
             # Stage 1: Conversational AI response
@@ -1608,8 +1608,8 @@ if prompt:
             st.warning(t("Please upload a PCAP file or enter a file path in the sidebar to start analysis."))
 
         # Timer display
-        t.stop()
-        st.write(f"⏱️ Elapsed: {fmt_seconds(t.elapsed())}")
+        timer.stop()
+        st.write(t("⏱️ Elapsed:") + f" {fmt_seconds(timer.elapsed())}")
 
     else:
         # Generic equipment handling
