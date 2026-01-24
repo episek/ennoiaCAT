@@ -103,8 +103,9 @@ class TinySAHelper:
             }, 
             
         ]
-        return few_shot_examples      
-        
+        return few_shot_examples
+
+    @staticmethod
     def select_checkboxes():
         st.markdown("### Select your model type")
 
@@ -133,6 +134,7 @@ class TinySAHelper:
         # After submission
         return st.session_state.selected
 
+    @staticmethod
     def load_lora_model(base_model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", lora_path="./tinyllama_tinysa_lora"):
         """
         Loads a base language model with LoRA weights and returns the tokenizer and the merged model.
@@ -260,6 +262,7 @@ class TinySAHelper:
 
         return tokenizer, peft_model, base_model
 
+    @staticmethod
     def load_OpenAI_model():
 
         from openai import OpenAI
