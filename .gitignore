@@ -97,3 +97,5 @@ $env
 *.tmp
 *.bak
 *.swp
+plot1.png
+plot2.png
