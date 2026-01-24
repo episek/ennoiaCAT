@@ -936,6 +936,7 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
         has_tx_reference: If False, use DMRS-based SNR/EVM calculation (no tx_frame_iq.csv)
     """
     global interf, layer_interf_start, layer_interf_end, layer_has_interf, evma_db, numLayers
+    global ai_interf_start, ai_interf_end, ai_has_interf
 
     # Calculate number of PRBs from REs (12 REs per PRB)
     num_prbs = num_res // 12  # 273 for 100MHz
@@ -944,6 +945,10 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
     layer_interf_start = [0, 0, 0, 0]
     layer_interf_end = [max_prb, max_prb, max_prb, max_prb]  # Full range = no interference
     layer_has_interf = [False, False, False, False]
+    # Initialize AI interference results (will be set in AI and Both modes)
+    ai_interf_start = None
+    ai_interf_end = None
+    ai_has_interf = None
     interf = 0
     numLayers = num_layers
     eq_frame_mimo = None
@@ -1074,6 +1079,11 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 plt.tight_layout()
                 plt.savefig("plot1.png")
                 plt.close()
+
+                # For AI-only mode, set AI interference variables (same as layer_interf)
+                ai_interf_start = layer_interf_start.copy()
+                ai_interf_end = layer_interf_end.copy()
+                ai_has_interf = layer_has_interf.copy()
 
                 # Return early for AI-only mode (no DMRS results)
                 return None, evm_results, evm_results, None
