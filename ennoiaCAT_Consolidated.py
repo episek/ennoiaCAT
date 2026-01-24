@@ -1592,10 +1592,18 @@ if prompt:
             st.info(f"Status: {progress.get('status', 'Unknown')}")
 
             # Load and display CSV results if available
-            for csv_file in ["data_symbols.csv", "rx_frame_iq_cap.csv", "evm_per_prb.csv", "snr_per_prb.csv", "snr_diff_per_prb.csv"]:
+            # File descriptions: (filename, description, mode)
+            csv_files = [
+                ("data_symbols.csv", "Equalized IQ symbols", "DMRS"),
+                ("rx_frame_iq_cap.csv", "Raw RX frame IQ data", "Both"),
+                ("evm_per_prb.csv", "EVM per PRB per layer (dB)", "AI"),
+                ("snr_per_prb.csv", "SNR per PRB per layer (dB)", "DMRS"),
+                ("snr_diff_per_prb.csv", "Interference level per PRB per layer (dB)", "AI"),
+            ]
+            for csv_file, description, mode in csv_files:
                 df = helper.load_analysis_csv(csv_file)
                 if df is not None:
-                    with st.expander(f"📁 {csv_file}"):
+                    with st.expander(f"📁 {csv_file} - {description} [{mode} mode]"):
                         st.dataframe(df.head(100))
                         st.download_button(
                             f"📥 Download {csv_file}",
