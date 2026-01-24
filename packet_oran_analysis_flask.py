@@ -1013,9 +1013,12 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             # Correct method: convert dB to linear power, average, convert back to dB
             # EVM_total_dB = 10 * log10(mean(10^(EVM_dB/10)))
             for layer in range(numLayers):
-                evm_linear_power = 10 ** (evm_db_PRB[layer] / 10)
-                evm_results[layer] = float(10 * np.log10(np.mean(evm_linear_power)))
+                layer_evm_db = evm_db_PRB[layer]
+                evm_linear_power = 10 ** (layer_evm_db / 10)
+                mean_power = np.mean(evm_linear_power)
+                evm_results[layer] = float(10 * np.log10(mean_power + 1e-12))
             evma_db = evm_results
+            print(f"AI-Based EVM results (from per-PRB): {evm_results}")
 
             # If AI-Based mode (not "Both"), use blind detection results for interference
             if detection_mode == "AI-Based Blind Detection":
@@ -1065,8 +1068,8 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 plt.savefig("plot1.png")
                 plt.close()
 
-                # Return early for AI-only mode
-                return None, evm_results
+                # Return early for AI-only mode (no DMRS results)
+                return None, evm_results, evm_results, None
 
             # For "Both" mode, also store blind detection results
             blind_interf_start = [0, 0, 0, 0]
@@ -1085,10 +1088,19 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                         blind_interf = 1
                 print()
 
+            # Store AI-based EVM results for "Both" mode (before DMRS overwrites)
+            ai_evm_results = evm_results.copy()
+            print(f"AI-Based EVM results stored: {ai_evm_results}")
+
         except Exception as e:
             print(f"Blind detection error: {e}")
             import traceback
             traceback.print_exc()
+            ai_evm_results = [0.0] * numLayers
+
+    # Initialize ai_evm_results if not in AI mode
+    if detection_mode == "DMRS-Based (Standard)":
+        ai_evm_results = None
 
     # -------------------------------------------------------------------------
     # DMRS-BASED INTERFERENCE DETECTION
@@ -1163,7 +1175,8 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             print(f"EVM calculated using DMRS reference (no TX CSV)")
 
         evma_db = evm_results
-        print(f"EVM results: {evm_results}")
+        dmrs_evm_results = evm_results.copy()
+        print(f"DMRS-Based EVM results: {dmrs_evm_results}")
 
         # Visualize constellation per layer
         plt.figure(figsize=(12, 6))
@@ -1341,7 +1354,10 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                     interf = 1
             print()
 
-    return eq_frame_mimo, evm_results
+    # Return with both AI and DMRS EVM results
+    # ai_evm_results: from blind detection (None if DMRS-only mode)
+    # dmrs_evm_results: from DMRS-based detection
+    return eq_frame_mimo, evm_results, ai_evm_results, dmrs_evm_results
 
 
 # -----------------------------------------------------------------------------
@@ -1530,7 +1546,7 @@ def upload():
         progress_status = {"status": f"Analyzing slot {start_slot} ({detection_mode})..."}
 
         try:
-            eq_frame, evm_results = analyze_capture(
+            eq_frame, evm_results, ai_evm_results, dmrs_evm_results = analyze_capture(
                 rx_frame, tx_frame, start_slot, N_ID, nSCID, layers, numREs, detection_mode, has_tx_reference
             )
         except Exception as e:
@@ -1555,6 +1571,10 @@ def upload():
         # Convert numpy types for JSON
         evm_results_native = [float(x) for x in evm_results]
 
+        # Prepare AI and DMRS EVM results for response
+        ai_evm_native = [float(x) for x in ai_evm_results] if ai_evm_results is not None else None
+        dmrs_evm_native = [float(x) for x in dmrs_evm_results] if dmrs_evm_results is not None else None
+
         return jsonify({
             "success": True,
             "message": f"Analysis complete for {os.path.basename(filepath)}",
@@ -1562,6 +1582,8 @@ def upload():
             "detection_mode": detection_mode,
             "interference": int(interf),
             "evm_db": evm_results_native,
+            "ai_evm_db": ai_evm_native,
+            "dmrs_evm_db": dmrs_evm_native,
             "evm_per_prb_csv": "evm_per_prb.csv",
             "snr_per_prb_csv": "snr_per_prb.csv",
             "snr_diff_per_prb_csv": "snr_diff_per_prb.csv",
@@ -1569,7 +1591,9 @@ def upload():
                 f"layer_{i}": {
                     "start_prb": int(layer_interf_start[i]),
                     "end_prb": int(layer_interf_end[i]),
-                    "evm_db": float(evm_results[i]) if i < len(evm_results) else 0.0
+                    "evm_db": float(evm_results[i]) if i < len(evm_results) else 0.0,
+                    "ai_evm_db": float(ai_evm_results[i]) if ai_evm_results is not None and i < len(ai_evm_results) else None,
+                    "dmrs_evm_db": float(dmrs_evm_results[i]) if dmrs_evm_results is not None and i < len(dmrs_evm_results) else None
                 } for i in range(layers)
             }
         })

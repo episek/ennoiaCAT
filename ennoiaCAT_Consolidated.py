@@ -1545,25 +1545,62 @@ if prompt:
 
 ### EVM Results (dB)
 
-| Layer | EVM (dB) |
+"""
+                        # Check if we have both AI and DMRS results
+                        ai_evm = analysis_data.get('ai_evm_db')
+                        dmrs_evm = analysis_data.get('dmrs_evm_db')
+                        detection_mode = analysis_data.get('detection_mode', '')
+
+                        if ai_evm and dmrs_evm:
+                            # Both mode - show both EVM results
+                            md_output += """| Layer | AI-Based EVM (dB) | DMRS-Based EVM (dB) |
+|-------|-------------------|---------------------|
+"""
+                            for i in range(len(ai_evm)):
+                                md_output += f"| Layer {i} | {ai_evm[i]:.2f} | {dmrs_evm[i]:.2f} |\n"
+                        elif ai_evm:
+                            # AI-only mode
+                            md_output += """| Layer | AI-Based EVM (dB) |
+|-------|-------------------|
+"""
+                            for i, evm in enumerate(ai_evm):
+                                md_output += f"| Layer {i} | {evm:.2f} |\n"
+                        else:
+                            # DMRS-only mode or fallback
+                            evm_values = analysis_data.get('evm_db', [])
+                            md_output += """| Layer | EVM (dB) |
 |-------|----------|
 """
-                        evm_values = analysis_data.get('evm_db', [])
-                        for i, evm in enumerate(evm_values):
-                            md_output += f"| Layer {i} | {evm:.2f} |\n"
+                            for i, evm in enumerate(evm_values):
+                                md_output += f"| Layer {i} | {evm:.2f} |\n"
 
                         # Add layer details if available
                         layers_data = analysis_data.get('layers', {})
                         if layers_data:
-                            md_output += """
+                            if ai_evm and dmrs_evm:
+                                md_output += """
+### Layer Details
+
+| Layer | Start PRB | End PRB | AI EVM (dB) | DMRS EVM (dB) |
+|-------|-----------|---------|-------------|---------------|
+"""
+                                for layer_name, layer_data in layers_data.items():
+                                    layer_num = layer_name.replace('layer_', '')
+                                    ai_val = layer_data.get('ai_evm_db')
+                                    dmrs_val = layer_data.get('dmrs_evm_db')
+                                    ai_str = f"{ai_val:.2f}" if ai_val is not None else "N/A"
+                                    dmrs_str = f"{dmrs_val:.2f}" if dmrs_val is not None else "N/A"
+                                    md_output += f"| Layer {layer_num} | {layer_data.get('start_prb', 'N/A')+1} | {layer_data.get('end_prb', 'N/A')} | {ai_str} | {dmrs_str} |\n"
+                            else:
+                                md_output += """
 ### Layer Details
 
 | Layer | Start PRB | End PRB | EVM (dB) |
 |-------|-----------|---------|----------|
 """
-                            for layer_name, layer_data in layers_data.items():
-                                layer_num = layer_name.replace('layer_', '')
-                                md_output += f"| Layer {layer_num} | {layer_data.get('start_prb', 'N/A')+1} | {layer_data.get('end_prb', 'N/A')} | {layer_data.get('evm_db', 0):.2f} |\n"
+                                for layer_name, layer_data in layers_data.items():
+                                    layer_num = layer_name.replace('layer_', '')
+                                    md_output += f"| Layer {layer_num} | {layer_data.get('start_prb', 'N/A')+1} | {layer_data.get('end_prb', 'N/A')} | {layer_data.get('evm_db', 0):.2f} |\n"
 
                         st.markdown(md_output)
 
