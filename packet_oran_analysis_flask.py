@@ -995,32 +995,6 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 plt.savefig("plot4.png")  # AI interference detection for Both mode
             plt.close()
 
-            # For Both mode, also create AI constellation plot (plot3.png)
-            if detection_mode == "Both":
-                plt.figure(figsize=(12, 6))
-                for layer in range(numLayers):
-                    plt.subplot(2, 2, layer + 1)
-                    # Layers 0,1 use even REs, layers 2,3 use odd REs
-                    if layer in [0, 1]:
-                        dmrs_data = rx_frame[start_slot, 2, layer, ::2]
-                    else:
-                        dmrs_data = rx_frame[start_slot, 2, layer, 1::2]
-                    # Apply phase correction
-                    corrected = correct_qpsk_phase_drift(dmrs_data) * np.exp(-1j * np.pi/4)
-                    corrected = correct_qpsk_phase_drift(corrected) * np.exp(-1j * np.pi/4)
-                    corrected /= np.sqrt((np.abs(corrected)**2).mean() + 1e-12)
-                    plt.plot(np.real(corrected), np.imag(corrected), '.', alpha=0.5)
-                    plt.title(f'AI Phase-Corrected DMRS - Layer {layer} - EVM: {evm_results[layer]:.2f} dB')
-                    plt.xlabel('I')
-                    plt.ylabel('Q')
-                    plt.grid(True)
-                    plt.axis('equal')
-                    plt.xlim(-2, 2)
-                    plt.ylim(-2, 2)
-                plt.tight_layout()
-                plt.savefig("plot3.png")  # AI constellation for Both mode
-                plt.close()
-
             # Save EVM per PRB per layer to CSV (AI-based blind detection)
             print("Saving EVM per PRB per layer to evm_per_prb.csv...")
             evm_df = pd.DataFrame(
@@ -1104,36 +1078,71 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 # Return early for AI-only mode (no DMRS results)
                 return None, evm_results, evm_results, None
 
-            # For "Both" mode, also store blind detection results
-            blind_interf_start = [0, 0, 0, 0]
-            blind_interf_end = [0, 0, 0, 0]
-            blind_interf = 0
+            # For "Both" mode, store AI detection results separately
+            ai_interf_start = [0, 0, 0, 0]
+            ai_interf_end = [max_prb, max_prb, max_prb, max_prb]
+            ai_has_interf = [False, False, False, False]
+            ai_interf = 0
             for layer in range(numLayers):
                 print(f"Layer {layer} - AI-Based Blind Detection Regions:")
                 regions = blind_regions[layer]
                 if not regions:
                     print("  No Interference Detected.")
+                    # Keep defaults: start=0, end=max_prb (full clean range)
                 else:
                     for start, end in regions:
                         print(f"  Interference Detected from PRB {start+1} to {end}")
-                        blind_interf_start[layer] = start
-                        blind_interf_end[layer] = end
-                        blind_interf = 1
+                        ai_interf_start[layer] = start
+                        ai_interf_end[layer] = end
+                        ai_has_interf[layer] = True
+                        ai_interf = 1
                 print()
 
             # Store AI-based EVM results for "Both" mode (before DMRS overwrites)
             ai_evm_results = evm_results.copy()
             print(f"AI-Based EVM results stored: {ai_evm_results}")
 
+            # Create AI constellation plot for Both mode (plot3.png)
+            # This matches plot1.png from AI-only mode
+            plt.figure(figsize=(12, 6))
+            for layer in range(numLayers):
+                plt.subplot(2, 2, layer + 1)
+                # Layers 0,1 use even REs, layers 2,3 use odd REs
+                if layer in [0, 1]:
+                    dmrs_data = rx_frame[start_slot, 2, layer, ::2]
+                else:
+                    dmrs_data = rx_frame[start_slot, 2, layer, 1::2]
+                # Apply phase correction (same as AI-only mode)
+                corrected = correct_qpsk_phase_drift(dmrs_data) * np.exp(-1j * np.pi/4)
+                corrected = correct_qpsk_phase_drift(corrected) * np.exp(-1j * np.pi/4)
+                corrected /= np.sqrt((np.abs(corrected)**2).mean() + 1e-12)
+                plt.plot(np.real(corrected), np.imag(corrected), '.', alpha=0.5)
+                plt.title(f'Phase-Corrected DMRS - Layer {layer} - EVM: {ai_evm_results[layer]:.2f} dB')
+                plt.xlabel('I')
+                plt.ylabel('Q')
+                plt.grid(True)
+                plt.axis('equal')
+                plt.xlim(-2, 2)
+                plt.ylim(-2, 2)
+            plt.tight_layout()
+            plt.savefig("plot3.png")  # AI constellation for Both mode
+            plt.close()
+
         except Exception as e:
             print(f"Blind detection error: {e}")
             import traceback
             traceback.print_exc()
             ai_evm_results = [0.0] * numLayers
+            ai_interf_start = [0, 0, 0, 0]
+            ai_interf_end = [max_prb, max_prb, max_prb, max_prb]
+            ai_has_interf = [False, False, False, False]
 
-    # Initialize ai_evm_results if not in AI mode
+    # Initialize AI results if not in AI mode
     if detection_mode == "DMRS-Based (Standard)":
         ai_evm_results = None
+        ai_interf_start = None
+        ai_interf_end = None
+        ai_has_interf = None
 
     # -------------------------------------------------------------------------
     # DMRS-BASED INTERFERENCE DETECTION
@@ -1609,6 +1618,25 @@ def upload():
         ai_evm_native = [float(x) for x in ai_evm_results] if ai_evm_results is not None else None
         dmrs_evm_native = [float(x) for x in dmrs_evm_results] if dmrs_evm_results is not None else None
 
+        # Build layer data with DMRS results (used for DMRS-only and Both modes)
+        layers_dict = {}
+        for i in range(layers):
+            layer_data = {
+                "start_prb": int(layer_interf_start[i]),
+                "end_prb": int(layer_interf_end[i]),
+                "has_interference": layer_has_interf[i],
+                "evm_db": float(evm_results[i]) if i < len(evm_results) else 0.0,
+                "dmrs_evm_db": float(dmrs_evm_results[i]) if dmrs_evm_results is not None and i < len(dmrs_evm_results) else None,
+            }
+            # Add AI-specific results for Both mode
+            if ai_evm_results is not None:
+                layer_data["ai_evm_db"] = float(ai_evm_results[i]) if i < len(ai_evm_results) else None
+            if ai_interf_start is not None:
+                layer_data["ai_start_prb"] = int(ai_interf_start[i])
+                layer_data["ai_end_prb"] = int(ai_interf_end[i])
+                layer_data["ai_has_interference"] = ai_has_interf[i]
+            layers_dict[f"layer_{i}"] = layer_data
+
         return jsonify({
             "success": True,
             "message": f"Analysis complete for {os.path.basename(filepath)}",
@@ -1621,16 +1649,7 @@ def upload():
             "evm_per_prb_csv": "evm_per_prb.csv",
             "snr_per_prb_csv": "snr_per_prb.csv",
             "snr_diff_per_prb_csv": "snr_diff_per_prb.csv",
-            "layers": {
-                f"layer_{i}": {
-                    "start_prb": int(layer_interf_start[i]),
-                    "end_prb": int(layer_interf_end[i]),
-                    "has_interference": layer_has_interf[i],
-                    "evm_db": float(evm_results[i]) if i < len(evm_results) else 0.0,
-                    "ai_evm_db": float(ai_evm_results[i]) if ai_evm_results is not None and i < len(ai_evm_results) else None,
-                    "dmrs_evm_db": float(dmrs_evm_results[i]) if dmrs_evm_results is not None and i < len(dmrs_evm_results) else None
-                } for i in range(layers)
-            }
+            "layers": layers_dict
         })
 
     except Exception as e:

@@ -1604,10 +1604,12 @@ if prompt:
                                     layer_num = layer_name.replace('layer_', '')
                                     ai_val = layer_data.get('ai_evm_db')
                                     ai_str = f"{ai_val:.2f}" if ai_val is not None else "N/A"
-                                    has_interf = layer_data.get('has_interference', False)
-                                    start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
-                                    end_prb = layer_data.get('end_prb', 'N/A')
-                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {ai_str} |\n"
+                                    # Use AI-specific interference fields
+                                    ai_has_interf = layer_data.get('ai_has_interference', False)
+                                    ai_start = layer_data.get('ai_start_prb', 0)
+                                    ai_end = layer_data.get('ai_end_prb', 'N/A')
+                                    start_prb = ai_start + 1 if ai_has_interf else ai_start
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {ai_end} | {ai_str} |\n"
                             else:
                                 md_output += """
 ### Layer Details
