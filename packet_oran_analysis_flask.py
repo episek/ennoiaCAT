@@ -1588,6 +1588,12 @@ def upload():
         # Step 3: Run analysis
         progress_status = {"status": f"Analyzing slot {start_slot} ({detection_mode})..."}
 
+        # Clean up old plot files to prevent showing stale plots from previous mode
+        for old_plot in ["plot1.png", "plot2.png", "plot3.png", "plot4.png"]:
+            if os.path.exists(old_plot):
+                os.remove(old_plot)
+                print(f"Removed old plot file: {old_plot}")
+
         try:
             eq_frame, evm_results, ai_evm_results, dmrs_evm_results = analyze_capture(
                 rx_frame, tx_frame, start_slot, N_ID, nSCID, layers, numREs, detection_mode, has_tx_reference
