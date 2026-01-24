@@ -1590,7 +1590,11 @@ if prompt:
                                     dmrs_val = layer_data.get('dmrs_evm_db')
                                     ai_str = f"{ai_val:.2f}" if ai_val is not None else "N/A"
                                     dmrs_str = f"{dmrs_val:.2f}" if dmrs_val is not None else "N/A"
-                                    md_output += f"| Layer {layer_num} | {layer_data.get('start_prb', 'N/A')+1} | {layer_data.get('end_prb', 'N/A')} | {ai_str} | {dmrs_str} |\n"
+                                    # Start PRB: +1 (1-indexed) when interference, 0-indexed when no interference
+                                    has_interf = layer_data.get('has_interference', False)
+                                    start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
+                                    end_prb = layer_data.get('end_prb', 'N/A')
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {ai_str} | {dmrs_str} |\n"
                             else:
                                 md_output += """
 ### Layer Details
@@ -1600,7 +1604,11 @@ if prompt:
 """
                                 for layer_name, layer_data in layers_data.items():
                                     layer_num = layer_name.replace('layer_', '')
-                                    md_output += f"| Layer {layer_num} | {layer_data.get('start_prb', 'N/A')+1} | {layer_data.get('end_prb', 'N/A')} | {layer_data.get('evm_db', 0):.2f} |\n"
+                                    # Start PRB: +1 (1-indexed) when interference, 0-indexed when no interference
+                                    has_interf = layer_data.get('has_interference', False)
+                                    start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
+                                    end_prb = layer_data.get('end_prb', 'N/A')
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {layer_data.get('evm_db', 0):.2f} |\n"
 
                         st.markdown(md_output)
 
