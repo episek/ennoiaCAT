@@ -1009,9 +1009,12 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             snr_diff_df.to_csv('snr_diff_per_prb.csv', float_format='%.2f')
             print(f"Saved SNR diff per PRB to snr_diff_per_prb.csv ({blind_snr_diff.shape[1]} PRBs x {numLayers} layers)")
 
-            # Extract EVM results from blind detection (average per layer)
+            # Extract EVM results from blind detection (RMS average per layer)
+            # Correct method: convert dB to linear power, average, convert back to dB
+            # EVM_total_dB = 10 * log10(mean(10^(EVM_dB/10)))
             for layer in range(numLayers):
-                evm_results[layer] = float(np.mean(evm_db_PRB[layer]))
+                evm_linear_power = 10 ** (evm_db_PRB[layer] / 10)
+                evm_results[layer] = float(10 * np.log10(np.mean(evm_linear_power)))
             evma_db = evm_results
 
             # If AI-Based mode (not "Both"), use blind detection results for interference
