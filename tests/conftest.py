@@ -194,3 +194,100 @@ def temp_config_file(tmp_path):
     import json
     config_file.write_text(json.dumps(config_data))
     return str(config_file)
+
+
+@pytest.fixture
+def temp_pcap_file(tmp_path):
+    """Create a temporary PCAP file for testing"""
+    pcap_file = tmp_path / "test.pcap"
+    # Write minimal PCAP header (24 bytes)
+    pcap_header = bytes([
+        0xd4, 0xc3, 0xb2, 0xa1,  # Magic number (little endian)
+        0x02, 0x00, 0x04, 0x00,  # Version major/minor
+        0x00, 0x00, 0x00, 0x00,  # Timezone
+        0x00, 0x00, 0x00, 0x00,  # Sigfigs
+        0xff, 0xff, 0x00, 0x00,  # Snaplen
+        0x01, 0x00, 0x00, 0x00   # Network (Ethernet)
+    ])
+    pcap_file.write_bytes(pcap_header)
+    return str(pcap_file)
+
+
+@pytest.fixture
+def mock_flask_response():
+    """Create a mock Flask response"""
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "success": True,
+        "evm_results": {0: -25.0, 1: -26.0, 2: -24.5, 3: -25.5},
+        "interference_detected": False
+    }
+    response.text = "Analysis completed successfully"
+    return response
+
+
+@pytest.fixture
+def sample_iq_data():
+    """Generate sample IQ data for testing"""
+    import numpy as np
+    np.random.seed(42)
+    num_samples = 3276  # Standard PRB count for 100MHz
+
+    # Generate QPSK-like constellation with noise
+    qpsk_symbols = np.array([1+1j, 1-1j, -1+1j, -1-1j]) / np.sqrt(2)
+    indices = np.random.randint(0, 4, num_samples)
+    iq_data = qpsk_symbols[indices]
+
+    # Add small noise
+    noise = 0.05 * (np.random.randn(num_samples) + 1j * np.random.randn(num_samples))
+    iq_data += noise
+
+    return iq_data
+
+
+@pytest.fixture
+def env_production_config(monkeypatch):
+    """Set up production-like environment variables"""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-production-key-1234567890")
+    monkeypatch.setenv("FLASK_HOST", "0.0.0.0")
+    monkeypatch.setenv("FLASK_PORT", "5002")
+    monkeypatch.setenv("REPLAY_CAPTURE_URL", "http://production-server:8050")
+    monkeypatch.setenv("SIMON_ANALYZER_URL", "http://production-server:5002")
+
+
+@pytest.fixture
+def mock_requests():
+    """Mock requests module for network tests"""
+    with patch('requests.get') as mock_get, \
+         patch('requests.post') as mock_post:
+        yield {
+            'get': mock_get,
+            'post': mock_post
+        }
+
+
+@pytest.fixture
+def sample_evm_data():
+    """Generate sample EVM data across PRBs"""
+    import numpy as np
+    num_prbs = 273
+    num_layers = 4
+
+    # Generate baseline EVM around -25 dB
+    evm_data = np.random.normal(-25, 2, (num_layers, num_prbs))
+
+    return evm_data
+
+
+@pytest.fixture
+def sample_snr_data():
+    """Generate sample SNR data across PRBs"""
+    import numpy as np
+    num_prbs = 273
+    num_layers = 4
+
+    # Generate baseline SNR around 30 dB
+    snr_data = np.random.normal(30, 3, (num_layers, num_prbs))
+
+    return snr_data
