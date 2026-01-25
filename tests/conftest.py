@@ -1,5 +1,5 @@
 """
-Pytest configuration and shared fixtures for EnnoiaCAT tests
+Pytest configuration and shared fixtures for Ennoia tinySA tests
 """
 import pytest
 import sys
@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @pytest.fixture
 def mock_serial_port():
-    """Mock serial port for testing"""
+    """Mock serial port for tinySA testing"""
     mock_port = Mock()
     mock_port.device = "COM3"
     mock_port.vid = 0x0483
@@ -29,65 +29,6 @@ def mock_tinysa_device():
         'vid': 0x0483,
         'pid': 0x5740,
         'description': 'TinySA Spectrum Analyzer'
-    }
-
-
-@pytest.fixture
-def mock_viavi_device():
-    """Mock Viavi device info"""
-    return {
-        'ip': '192.168.1.100',
-        'protocol': 'SCPI',
-        'port': 5025
-    }
-
-
-@pytest.fixture
-def mock_keysight_device():
-    """Mock Keysight device info"""
-    return {
-        'ip': '192.168.1.101',
-        'resource': 'TCPIP0::192.168.1.101::inst0::INSTR',
-        'idn': 'Keysight Technologies,N9918A,MY12345678,A.01.23'
-    }
-
-
-@pytest.fixture
-def mock_rohde_schwarz_device():
-    """Mock Rohde & Schwarz device info"""
-    return {
-        'resource': 'TCPIP0::192.168.1.102::hislip0::INSTR',
-        'idn': 'Rohde&Schwarz,NRQ6,123456,1.0.0'
-    }
-
-
-@pytest.fixture
-def mock_mavenir_device():
-    """Mock Mavenir RU device info"""
-    return {
-        'ip': '10.10.10.10',
-        'protocol': 'NETCONF',
-        'port': 830
-    }
-
-
-@pytest.fixture
-def mock_cisco_device():
-    """Mock Cisco NCS540 device info"""
-    return {
-        'port': 'COM4',
-        'vid': 0x0403,
-        'pid': 0x6001,
-        'description': 'USB Serial Converter'
-    }
-
-
-@pytest.fixture
-def mock_aukua_device():
-    """Mock Aukua device info"""
-    return {
-        'resource': 'TCPIP0::192.168.1.103::inst0::INSTR',
-        'idn': 'AUKUA,System-100,SN123456,1.0.0'
     }
 
 
@@ -123,22 +64,6 @@ def mock_transformers_tokenizer():
     mock_tokenizer.decode.return_value = "Generated response from SLM"
     mock_tokenizer.apply_chat_template.return_value = [1, 2, 3]
     return mock_tokenizer
-
-
-@pytest.fixture
-def mock_pyvisa_resource_manager():
-    """Mock PyVISA resource manager"""
-    mock_rm = MagicMock()
-    mock_rm.list_resources.return_value = [
-        'TCPIP0::192.168.1.100::inst0::INSTR',
-        'TCPIP0::192.168.1.101::hislip0::INSTR'
-    ]
-
-    mock_inst = MagicMock()
-    mock_inst.query.return_value = "Keysight Technologies,N9918A,MY12345678,A.01.23"
-    mock_rm.open_resource.return_value = mock_inst
-
-    return mock_rm
 
 
 @pytest.fixture
@@ -197,97 +122,77 @@ def temp_config_file(tmp_path):
 
 
 @pytest.fixture
-def temp_pcap_file(tmp_path):
-    """Create a temporary PCAP file for testing"""
-    pcap_file = tmp_path / "test.pcap"
-    # Write minimal PCAP header (24 bytes)
-    pcap_header = bytes([
-        0xd4, 0xc3, 0xb2, 0xa1,  # Magic number (little endian)
-        0x02, 0x00, 0x04, 0x00,  # Version major/minor
-        0x00, 0x00, 0x00, 0x00,  # Timezone
-        0x00, 0x00, 0x00, 0x00,  # Sigfigs
-        0xff, 0xff, 0x00, 0x00,  # Snaplen
-        0x01, 0x00, 0x00, 0x00   # Network (Ethernet)
-    ])
-    pcap_file.write_bytes(pcap_header)
-    return str(pcap_file)
+def sample_csv_data(tmp_path):
+    """Create a sample signal strength CSV file"""
+    csv_file = tmp_path / "max_signal_strengths.csv"
+    csv_content = """frequency,signal_strength
+300000000,-50.2
+400000000,-45.1
+500000000,-48.7
+600000000,-52.3
+700000000,-47.8
+800000000,-49.5
+900000000,-51.1
+"""
+    csv_file.write_text(csv_content)
+    return str(csv_file)
 
 
 @pytest.fixture
-def mock_flask_response():
-    """Create a mock Flask response"""
-    response = Mock()
-    response.status_code = 200
-    response.json.return_value = {
-        "success": True,
-        "evm_results": {0: -25.0, 1: -26.0, 2: -24.5, 3: -25.5},
-        "interference_detected": False
-    }
-    response.text = "Analysis completed successfully"
-    return response
+def mock_serial_connection():
+    """Mock serial connection for tinySA"""
+    mock_serial = MagicMock()
+    mock_serial.write = MagicMock()
+    mock_serial.read = MagicMock(return_value=b'\n')
+    mock_serial.readline = MagicMock(return_value=b'-50.2\n')
+    mock_serial.close = MagicMock()
+    return mock_serial
 
 
 @pytest.fixture
-def sample_iq_data():
-    """Generate sample IQ data for testing"""
-    import numpy as np
-    np.random.seed(42)
-    num_samples = 3276  # Standard PRB count for 100MHz
-
-    # Generate QPSK-like constellation with noise
-    qpsk_symbols = np.array([1+1j, 1-1j, -1+1j, -1-1j]) / np.sqrt(2)
-    indices = np.random.randint(0, 4, num_samples)
-    iq_data = qpsk_symbols[indices]
-
-    # Add small noise
-    noise = 0.05 * (np.random.randn(num_samples) + 1j * np.random.randn(num_samples))
-    iq_data += noise
-
-    return iq_data
-
-
-@pytest.fixture
-def env_production_config(monkeypatch):
-    """Set up production-like environment variables"""
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-production-key-1234567890")
-    monkeypatch.setenv("FLASK_HOST", "0.0.0.0")
-    monkeypatch.setenv("FLASK_PORT", "5002")
-    monkeypatch.setenv("REPLAY_CAPTURE_URL", "http://production-server:8050")
-    monkeypatch.setenv("SIMON_ANALYZER_URL", "http://production-server:5002")
-
-
-@pytest.fixture
-def mock_requests():
-    """Mock requests module for network tests"""
-    with patch('requests.get') as mock_get, \
-         patch('requests.post') as mock_post:
-        yield {
-            'get': mock_get,
-            'post': mock_post
+def sample_operator_table():
+    """Sample operator frequency table"""
+    return [
+        {
+            "operator": "Carrier A",
+            "band": "Band 7",
+            "start_mhz": 2620,
+            "end_mhz": 2690,
+            "technology": "LTE"
+        },
+        {
+            "operator": "Carrier B",
+            "band": "Band 3",
+            "start_mhz": 1805,
+            "end_mhz": 1880,
+            "technology": "LTE"
+        },
+        {
+            "operator": "Carrier C",
+            "band": "n78",
+            "start_mhz": 3300,
+            "end_mhz": 3800,
+            "technology": "5G NR"
         }
+    ]
 
 
 @pytest.fixture
-def sample_evm_data():
-    """Generate sample EVM data across PRBs"""
-    import numpy as np
-    num_prbs = 273
-    num_layers = 4
-
-    # Generate baseline EVM around -25 dB
-    evm_data = np.random.normal(-25, 2, (num_layers, num_prbs))
-
-    return evm_data
-
-
-@pytest.fixture
-def sample_snr_data():
-    """Generate sample SNR data across PRBs"""
-    import numpy as np
-    num_prbs = 273
-    num_layers = 4
-
-    # Generate baseline SNR around 30 dB
-    snr_data = np.random.normal(30, 3, (num_layers, num_prbs))
-
-    return snr_data
+def mock_wifi_scan_results():
+    """Mock WiFi scan results"""
+    return [
+        {
+            "SSID": "TestNetwork1",
+            "Signal (dBm)": -45,
+            "Frequency (MHz)": 2437,
+            "Channel": 6,
+            "Band": "2.4 GHz"
+        },
+        {
+            "SSID": "TestNetwork2",
+            "Signal (dBm)": -55,
+            "Frequency (MHz)": 5180,
+            "Channel": 36,
+            "Band": "5 GHz"
+        }
+    ]
