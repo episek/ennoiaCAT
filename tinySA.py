@@ -1,39 +1,29 @@
 #!/usr/bin/env python3
+"""
+tinySA Driver - Open Source
+This module contains the tinySA device commands and communication.
+The core functions (getport, first_float) are imported from the licensed ennoia_core module.
+
+You can modify the tinySA commands below for educational purposes.
+The license validation is handled by ennoia_core (compiled/protected).
+"""
 import serial
 import numpy as np
 import pylab as pl
 import struct
-from serial.tools import list_ports
-import re
 
-VID = 0x0483 #1155
-PID = 0x5740 #22336
-
-_NUM_RE = re.compile(r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?')
-
-def _first_float(s: str):
-    """Extract the first float from a messy line, or None if none found."""
-    if not s:
-        return None
-    s = s.strip().replace('\x00', '').replace(',', '.')
-    try:
-        return float(s)
-    except Exception:
-        m = _NUM_RE.search(s)
-        if m:
-            try:
-                return float(m.group(0))
-            except Exception:
-                return None
-    return None
-
-# Get tinysa device automatically
-def getport() -> str:
-    device_list = list_ports.comports()
-    for device in device_list:
-        if device.vid == VID and device.pid == PID:
-            return device.device
-    raise OSError("device not found")
+# Import license-protected core functions
+# These are compiled and contain the license validation
+try:
+    from ennoia_core import getport, first_float as _first_float, LicenseError
+except ImportError:
+    # Fallback error if ennoia_core is not available
+    class LicenseError(Exception):
+        pass
+    def getport():
+        raise LicenseError("License module not found. Please ensure ennoia_core is installed.")
+    def _first_float(s):
+        raise LicenseError("License module not found. Please ensure ennoia_core is installed.")
 
 REF_LEVEL = (1<<9)
 

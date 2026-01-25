@@ -3,6 +3,22 @@
 *.pem
 *.key
 
+# Licensing - NEVER commit these
+licensing/private_key.pem
+licensing/public_key.pem
+license.json
+license_*.json
+!LICENSING_GUIDE.md
+
+# Protected/Compiled modules (build output only)
+dist_protected/
+ennoia_core_source.py
+*.pyd
+*.so
+
+# Keep pyarmor runtime for distribution
+!pyarmor_runtime_000000/
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -51,7 +67,6 @@ uploads/
 *.csv
 *.pcap
 *.pcapng
-*.json
 *.jsonl
 *.bin
 *.exe
@@ -59,6 +74,12 @@ uploads/
 temp.*
 output.*
 max_signal_strengths.*
+
+# License files (keep operator_table.json and training data)
+license.json
+license_*.json
+!operator_table.json
+!tinySA_train.json
 
 # Model weights and checkpoints
 tinyllama_tinysa_lora/
