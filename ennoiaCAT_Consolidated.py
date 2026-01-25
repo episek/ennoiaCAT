@@ -73,11 +73,11 @@ language_map = {
     "Français": "fr",
     "Español": "es",
     "Deutsch": "de",
-    "עברית": "he",
+    "עברית": "iw",      # Hebrew uses 'iw' in Google Translate API
     "हिन्दी": "hi",
     "العربية": "ar",
     "Русский": "ru",
-    "中文": "zh-cn",
+    "中文": "zh-CN",    # Use zh-CN instead of zh-cn
     "日本語": "ja",
     "한국어": "ko"
 }
