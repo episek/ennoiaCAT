@@ -1702,16 +1702,20 @@ if prompt:
                     for csv_file, description, mode in available_csvs:
                         df = helper.load_analysis_csv(csv_file)
                         if df is not None:
-                            st.markdown(f"**📁 {csv_file}** - {description} [{mode} mode]")
-                            st.dataframe(df.head(100))
-                            st.download_button(
-                                f"📥 Download {csv_file}",
-                                data=df.to_csv(index=False),
-                                file_name=csv_file,
-                                mime="text/csv",
-                                key=f"download_{csv_file}"
-                            )
-                            st.divider()
+                            # Nested expander for each CSV file (collapsed by default)
+                            with st.expander(f"📁 {csv_file} - {description} [{mode} mode]", expanded=False):
+                                # For per-PRB files, show all rows (273 PRBs); otherwise limit to 100
+                                if "per_prb" in csv_file:
+                                    st.dataframe(df, height=400)  # Show all PRBs with scrollable view
+                                else:
+                                    st.dataframe(df.head(100))
+                                st.download_button(
+                                    f"📥 Download {csv_file}",
+                                    data=df.to_csv(index=False),
+                                    file_name=csv_file,
+                                    mime="text/csv",
+                                    key=f"download_{csv_file}"
+                                )
 
         elif should_analyze and not pcap_filepath:
             st.warning(t("Please upload a PCAP file or enter a file path in the sidebar to start analysis."))
