@@ -614,9 +614,14 @@ class CSHelper:
                 iface_in = st.session_state.iface_in
                 src_ip_out = st.session_state.selected_ip_out
                 src_ip_in = st.session_state.selected_ip_in
-                
-                #src_mac_out = get_if_hwaddr(iface_out)
-                src_mac_out = f"02:11:22:33:44:55"
+
+                # Get MAC address from interface or use configured value
+                try:
+                    src_mac_out = get_if_hwaddr(iface_out) if SCAPY_AVAILABLE else None
+                except Exception:
+                    src_mac_out = None
+                if not src_mac_out:
+                    src_mac_out = os.getenv("DEFAULT_MAC_ADDRESS", "02:00:00:00:00:01")
 
                 if src_ip_out and iface_out and src_ip_in and iface_in:
                     st.success(t("✅ Interfaces Selected"))
@@ -635,7 +640,8 @@ class CSHelper:
                     logger.debug(f"pcap_file_in: {pcap_file_in}")
 
                     #run first flask_pcap_backend.py
-                    res = requests.post("http://localhost:8050/replay_and_capture", json={
+                    replay_capture_url = os.getenv("REPLAY_CAPTURE_URL", "http://localhost:8050")
+                    res = requests.post(f"{replay_capture_url}/replay_and_capture", json={
                         "iface_out": iface_out,
                         "iface_in": iface_in,
                         "src_mac": src_mac_out,
@@ -688,12 +694,13 @@ class CSHelper:
                 payload = {"filepath": full_path}
                 
                 try:
-                    response = requests.post("http://localhost:5002/upload", json=payload, timeout=30)
+                    simon_url = os.getenv("SIMON_ANALYZER_URL", "http://localhost:5002")
+                    response = requests.post(f"{simon_url}/upload", json=payload, timeout=30)
                     st.success(f"SiMon says: {response.text}")
                 except requests.exceptions.Timeout:
-                    st.error("Request to http://localhost:5002 timed out")
+                    st.error(f"Request to {simon_url} timed out")
                 except requests.exceptions.ConnectionError as e:
-                    st.error(f"http://localhost:5002 is not available: {e}")
+                    st.error(f"{simon_url} is not available: {e}")
                 except requests.exceptions.RequestException as e:
                     st.error(f"Request error: {e}")
 
@@ -706,9 +713,10 @@ class CSHelper:
                 # Poll for analyzer status with 300 second timeout (5 minutes for long operations)
                 poll_start_time = time.time()
                 poll_timeout = 300  # 5 minutes
+                simon_url = os.getenv("SIMON_ANALYZER_URL", "http://localhost:5002")
                 while time.time() - poll_start_time < poll_timeout:
                     try:
-                        status_response = requests.get("http://localhost:5002/progress", timeout=15)
+                        status_response = requests.get(f"{simon_url}/progress", timeout=15)
                         status = status_response.json()
                         st.write(f"Analyzer Status: {status['status']}")
                         if "Completed" in status['status'] or "Error" in status['status'] or "Idle" in status['status']:

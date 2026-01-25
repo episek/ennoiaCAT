@@ -17,10 +17,10 @@ from openai import OpenAI
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Flask server configuration
-FLASK_HOST = "127.0.0.1"
-FLASK_PORT = 5002
-FLASK_URL = f"http://{FLASK_HOST}:{FLASK_PORT}"
+# Flask server configuration (configurable via environment variables)
+FLASK_HOST = os.getenv("FLASK_HOST", "127.0.0.1")
+FLASK_PORT = int(os.getenv("FLASK_PORT", "5002"))
+FLASK_URL = os.getenv("FLASK_URL", f"http://{FLASK_HOST}:{FLASK_PORT}")
 
 class ORANHelper:
     """Helper class for ORAN PCAP Analysis integration"""
@@ -48,9 +48,14 @@ class ORANHelper:
         """Load OpenAI model for chat functionality"""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY not set")
+            logger.error("OPENAI_API_KEY environment variable is not set")
+            raise ValueError("OPENAI_API_KEY not set. Please set this environment variable to use OpenAI features.")
+        if len(api_key) < 20:
+            logger.error("OPENAI_API_KEY appears to be invalid (too short)")
+            raise ValueError("OPENAI_API_KEY appears to be invalid. Please check the key.")
         client = OpenAI(api_key=api_key)
         model = "gpt-4o-mini"
+        logger.info(f"OpenAI client initialized with model: {model}")
         return client, model
 
     @staticmethod

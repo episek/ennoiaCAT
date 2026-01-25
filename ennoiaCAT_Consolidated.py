@@ -30,11 +30,17 @@ import json
 import ast
 import time
 import re
+import logging
+import os
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Optional imports
 try:
@@ -285,8 +291,8 @@ elif equipment_type == "Cisco NCS540":
     if "connected_port" not in st.session_state:
         st.session_state.connected_port = None
 
-    username = st.text_input("Username", "cisco")
-    password = st.text_input("Password", type="password")
+    username = st.text_input("Username", value="", placeholder="Enter username")
+    password = st.text_input("Password", type="password", placeholder="Enter password")
 
     if st.button("Connect Serial"):
         try:
@@ -365,12 +371,18 @@ elif equipment_type == "ORAN PCAP Analyzer":
     pcap_filepath = st.sidebar.text_input("Or enter PCAP file path", value="")
 
     if uploaded_pcap is not None:
-        # Save uploaded file temporarily
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pcap') as tmp_file:
-            tmp_file.write(uploaded_pcap.read())
-            pcap_filepath = tmp_file.name
-            st.sidebar.success(f"File uploaded: {uploaded_pcap.name}")
+        # Validate file size (max 500MB)
+        max_file_size = 500 * 1024 * 1024  # 500 MB
+        file_size = uploaded_pcap.size
+        if file_size > max_file_size:
+            st.sidebar.error(f"File too large: {file_size / 1024 / 1024:.1f} MB. Maximum allowed: 500 MB")
+        else:
+            # Save uploaded file temporarily
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pcap') as tmp_file:
+                tmp_file.write(uploaded_pcap.read())
+                pcap_filepath = tmp_file.name
+                st.sidebar.success(f"File uploaded: {uploaded_pcap.name} ({file_size / 1024 / 1024:.1f} MB)")
 
 # -----------------------------------------------------------------------------
 # AI MODEL SELECTION (COMMON)
@@ -1087,7 +1099,11 @@ if prompt:
 - Maintain a professional tone."""
 
             from openai import OpenAI
-            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                st.error(t("❌ OPENAI_API_KEY environment variable is not set. Please set it to use AI features."))
+                st.stop()
+            client = OpenAI(api_key=api_key)
 
             stream = client.chat.completions.create(
                 model=st.session_state.get("openai_model", "gpt-4o-mini"),
@@ -1202,10 +1218,10 @@ if prompt:
                 if isinstance(parsed, dict):
                     api_dict = parsed
                     api_dict["save"] = "max_signal_strengths.csv"
-            except Exception:
-                print("Warning: Failed to parse response. Using default options.")
+            except (ValueError, SyntaxError):
+                logger.warning("Failed to parse response. Using default options.")
 
-        print(f"\nParsed API options:\n{api_dict}")
+        logger.debug(f"Parsed API options: {api_dict}")
 
         # Parse frequency units (GHz, MHz, Hz) to Hz
         def parse_frequency(value):
@@ -1249,7 +1265,7 @@ if prompt:
                     num_str, unit = freq_mentions[0]
                     mentioned_hz = float(num_str) * (1e9 if unit == 'ghz' else 1e6)
                     if abs(api_dict['start'] - mentioned_hz/10) < mentioned_hz/20:
-                        print(f"WARNING: Correcting start: AI extracted {api_dict['start']/1e6}MHz but user mentioned {mentioned_hz/1e6}MHz")
+                        logger.warning(f"Correcting start: AI extracted {api_dict['start']/1e6}MHz but user mentioned {mentioned_hz/1e6}MHz")
                         api_dict['start'] = mentioned_hz
 
                 # Second frequency mention likely corresponds to stop
@@ -1257,12 +1273,10 @@ if prompt:
                     num_str, unit = freq_mentions[1]
                     mentioned_hz = float(num_str) * (1e9 if unit == 'ghz' else 1e6)
                     if abs(api_dict['stop'] - mentioned_hz/10) < mentioned_hz/20:
-                        print(f"WARNING: Correcting stop: AI extracted {api_dict['stop']/1e6}MHz but user mentioned {mentioned_hz/1e6}MHz")
+                        logger.warning(f"Correcting stop: AI extracted {api_dict['stop']/1e6}MHz but user mentioned {mentioned_hz/1e6}MHz")
                         api_dict['stop'] = mentioned_hz
 
-            print(f"\nParsed frequencies (Hz):")
-            print(f"  Start: {api_dict.get('start')}")
-            print(f"  Stop: {api_dict.get('stop')}")
+            logger.debug(f"Parsed frequencies (Hz): Start={api_dict.get('start')}, Stop={api_dict.get('stop')}")
 
         # Configure and run tinySA
         freq = None  # Initialize freq
@@ -1271,7 +1285,7 @@ if prompt:
 
         if isinstance(api_dict, dict):
             opt = SimpleNamespace(**api_dict)
-            print(f"opt = {opt}")
+            logger.debug(f"opt = {opt}")
 
             # Store configured frequencies for WiFi check
             configured_start = getattr(opt, 'start', None)
@@ -1302,16 +1316,16 @@ if prompt:
                         status.update(label="No frequency data in CSV", state="error")
                     else:
                         freq_mhz = [x / 1e6 for x in freq]
-                        print(f"\nSignal strengths: {sstr}")
-                        print(f"\nFrequencies (MHz): {freq_mhz}")
-                        print(f"\nFrequency range: {min(freq)/1e9:.3f} GHz to {max(freq)/1e9:.3f} GHz")
+                        logger.debug(f"Signal strengths: {sstr}")
+                        logger.debug(f"Frequencies (MHz): {freq_mhz}")
+                        logger.info(f"Frequency range: {min(freq)/1e9:.3f} GHz to {max(freq)/1e9:.3f} GHz")
 
                         operator_table = helper.get_operator_frequencies()
                         if not operator_table:
                             st.error(t("Operator table could not be loaded."))
                         else:
                             frequency_report_out = helper.analyze_signal_peaks(sstr, freq_mhz, operator_table)
-                            print(f"\nFrequency report: {frequency_report_out}")
+                            logger.debug(f"Frequency report: {frequency_report_out}")
 
                             if not frequency_report_out:
                                 status.update(label="No cellular frequencies detected", state="complete")
@@ -1323,8 +1337,7 @@ if prompt:
 
             except Exception as e:
                 status.update(label=f"Analysis failed: {str(e)}", state="error")
-                import traceback
-                print(f"Error details: {traceback.format_exc()}")
+                logger.error(f"Analysis failed: {e}", exc_info=True)
 
         # WiFi scanner
         def freq_to_channel(freq):
@@ -1338,8 +1351,8 @@ if prompt:
                     return (freq - 5000) // 5
                 elif 5955 <= freq <= 7115:
                     return (freq - 5950) // 5 + 1
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as e:
+                logger.debug(f"freq_to_channel conversion failed for {freq}: {e}")
             return None
 
         def classify_band(freq):
@@ -1353,8 +1366,8 @@ if prompt:
                     return "6 GHz"
                 else:
                     return "Unknown"
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as e:
+                logger.debug(f"classify_band conversion failed for {freq}: {e}")
             return None
 
         def is_dfs_channel(channel):
@@ -1433,10 +1446,10 @@ if prompt:
             # Check if range overlaps with WiFi bands (2.4 GHz+)
             if configured_stop >= 2.39e9:
                 should_scan_wifi = True
-                print(f"WiFi scan triggered: stop freq {configured_stop/1e9:.3f} GHz >= 2.39 GHz")
+                logger.info(f"WiFi scan triggered: stop freq {configured_stop/1e9:.3f} GHz >= 2.39 GHz")
         elif freq and any(x >= 2.39e9 for x in freq):
             should_scan_wifi = True
-            print(f"WiFi scan triggered: freq data includes 2.4+ GHz")
+            logger.info(f"WiFi scan triggered: freq data includes 2.4+ GHz")
 
         if should_scan_wifi:
             with st.status("Scanning WiFi networks...", expanded=False) as status:
