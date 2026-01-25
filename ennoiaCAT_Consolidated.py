@@ -62,7 +62,7 @@ st.cache_resource.clear()
 # -----------------------------------------------------------------------------
 # STREAMLIT PAGE CONFIG
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Ennoia tinySA Controller", page_icon="📡")
+st.set_page_config(page_title="Ennoia Equipment Controller", page_icon="📡")
 
 # -----------------------------------------------------------------------------
 # LANGUAGE SELECTION (must be early for t() function)
@@ -105,15 +105,52 @@ def t(text):
     return translate_text(text, lang)
 
 # -----------------------------------------------------------------------------
-# SIDEBAR BRANDING
+# SIDEBAR BRANDING & EQUIPMENT SELECTION
 # -----------------------------------------------------------------------------
-st.sidebar.title("📡 tinySA Spectrum Analyzer")
+st.sidebar.title("Equipment Selection")
+
+# Equipment options - only tinySA is enabled in this production version
+ALL_EQUIPMENT = [
+    "tinySA",
+    "Viavi OneAdvisor",
+    "Keysight FieldFox",
+    "Aukua XGA4250",
+    "Cisco NCS540",
+    "Rohde & Schwarz NRQ6",
+    "ORAN PCAP Analyzer"
+]
+ENABLED_EQUIPMENT = ["tinySA"]  # Only tinySA enabled in this version
+
+# Format options with (Coming Soon) for disabled equipment
+def format_equipment_option(equip):
+    if equip in ENABLED_EQUIPMENT:
+        return equip
+    return f"{equip} (Coming Soon)"
+
+equipment_options = [format_equipment_option(e) for e in ALL_EQUIPMENT]
+
+# Default to tinySA (index 0)
+selected_equipment_display = st.sidebar.selectbox(
+    "Select Equipment",
+    equipment_options,
+    index=0
+)
+
+# Extract actual equipment name (remove " (Coming Soon)" suffix)
+equipment_type = selected_equipment_display.replace(" (Coming Soon)", "")
+
+# Check if selected equipment is enabled
+if equipment_type not in ENABLED_EQUIPMENT:
+    st.sidebar.warning(f"⚠️ {equipment_type} is not available in this version.")
+    st.sidebar.info("This production build supports **tinySA** only. Please select tinySA to continue.")
+    st.error(f"**{equipment_type}** is not available in this production version. Please select **tinySA** from the sidebar.")
+    st.stop()
 
 import os as _os
 if _os.path.exists('ennoia.jpg'):
     st.sidebar.image('ennoia.jpg', width=200)
 
-st.title("📡 Ennoia – tinySA Agentic AI Control & Analysis")
+st.title(f"📡 Ennoia – {equipment_type} Agentic AI Control & Analysis")
 st.caption(t("Natural-language controlled RF Spectrum Analyzer (OpenAI / SLM toggle)"))
 
 # -----------------------------------------------------------------------------
