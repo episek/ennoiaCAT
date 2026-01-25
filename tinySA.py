@@ -256,6 +256,12 @@ class tinySA:
         return Image.frombuffer('RGBA', (320, 240), arr, 'raw', 'RGBA', 0, 1)
 
     def logmag(self, x):
+        if x is None or len(x) == 0:
+            raise ValueError(f"No data to plot. x has {len(x) if x is not None else 0} elements")
+        if self.frequencies is None or len(self.frequencies) == 0:
+            raise ValueError(f"No frequencies set. frequencies has {len(self.frequencies) if self.frequencies is not None else 0} elements")
+        if len(self.frequencies) != len(x):
+            raise ValueError(f"Dimension mismatch: frequencies has {len(self.frequencies)} elements, data has {len(x)} elements")
         pl.grid(True)
         pl.xlim(self.frequencies[0], self.frequencies[-1])
         pl.plot(self.frequencies, x)

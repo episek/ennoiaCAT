@@ -321,6 +321,7 @@ class TinySAHelper:
         if opt.start or opt.stop or opt.points:
             nv.set_frequencies(opt.start, opt.stop, opt.points)
 
+        s = None  # Initialize scan data
         if opt.plot or opt.save or opt.scan:
             p = int(opt.port) if opt.port else 0
             if opt.scan or opt.points > 101:
@@ -334,10 +335,17 @@ class TinySAHelper:
                     s = nv.data(p)
                     nv.resume()
 
-        if opt.save:
+        if opt.save and s is not None and len(s) > 0:
             nv.writeCSV(s, opt.save)
 
         if opt.plot:
+            # Validate scan data before plotting
+            if s is None or len(s) == 0:
+                import logging
+                logging.warning(f"No scan data received. frequencies={len(nv.frequencies) if nv.frequencies is not None else 0}, data={len(s) if s is not None else 0}")
+                nv.close()
+                return None
+
             # Create explicit figure for thread safety BEFORE calling logmag
             fig, ax = plt.subplots(figsize=(10, 6))
             # Call logmag which plots to the current figure
