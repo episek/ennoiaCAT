@@ -6,6 +6,7 @@ import os
 import json
 import torch
 import threading
+import logging
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 from peft import PeftModel
 from serial.tools import list_ports
@@ -17,6 +18,10 @@ import numpy as np
 from scipy.signal import find_peaks
 import struct
 import pandas as pd
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 try:
     from deep_translator import GoogleTranslator
     TRANSLATOR_AVAILABLE = True
@@ -190,7 +195,7 @@ class CSHelper:
             local_files_only=True,
             trust_remote_code=False
         )
-        print(f"Base model loaded on {device}.")
+        logger.info(f"Base model loaded on {device}.")
 
         # Load and Merge LoRA
         peft_model = PeftModel.from_pretrained(base_model, lora_path)
@@ -279,7 +284,7 @@ class CSHelper:
             peft_model = PeftModel.from_pretrained(base_model, "./tinyllama_CS_lora", offload_folder=offload_path)
             peft_model = peft_model.merge_and_unload()
         except (KeyError, OSError) as e:
-            print(f"❗ Error applying LoRA adapter: {e}")
+            logger.error(f"Error applying LoRA adapter: {e}")
             peft_model = base_model  # Fallback
 
         return tokenizer, peft_model, base_model
@@ -342,14 +347,14 @@ class CSHelper:
 
         def bin_to_csv(bin_file, csv_file):
             if not os.path.exists(bin_file):
-                print(f"[ERROR] File not found: {bin_file}")
+                logger.error(f"File not found: {bin_file}")
                 return
 
             with open(bin_file, 'rb') as f:
                 bin_data = f.read()
             # Number of float32 samples
             num_samples = len(bin_data) // 4
-            print(f"[INFO] Total float32 values: {num_samples} ({num_samples//2} I/Q pairs)")
+            logger.info(f"Total float32 values: {num_samples} ({num_samples//2} I/Q pairs)")
 
             # Unpack as float32 (IEEE 754), little-endian
             float_data = struct.unpack('<' + 'd' * (len(bin_data)//8), bin_data)
@@ -405,7 +410,7 @@ class CSHelper:
             ax.set_ylabel('Magnitude (dB)')
             ax.set_title('FFT Spectrum')
             ax.grid(True)
-            return (translated, fig)
+            return (text, fig)
 
 
         def setup_power(nv, freq_hz):
@@ -494,14 +499,13 @@ class CSHelper:
 
         # === Helper: list interfaces with IPs ===
         def list_interfaces_with_ips():
-            print("\n=== Available Interfaces ===")
+            logger.info("=== Available Interfaces ===")
             for idx, iface in enumerate(get_if_list()):
                 try:
                     ip = get_if_addr(iface)
-                except Exception:
+                except OSError:
                     ip = "No IP assigned"
-                print(f"[{idx}] {iface:25} IP: {ip}")
-            print()
+                logger.info(f"[{idx}] {iface:25} IP: {ip}")
 
         def choose_interface(prompt):
             list_interfaces_with_ips()
@@ -509,10 +513,10 @@ class CSHelper:
             return get_if_list()[choice]
 
         def capture_job():
-            print(f"[INFO] Starting pyshark capture on {iface_in} ...")
+            logger.info(f"Starting pyshark capture on {iface_in} ...")
             cap.sniff(timeout=25)
             #cap.sniff(packet_count=1000)
-            print(f"[INFO] Capture finished, {len(cap)} packets saved to {pcap_file_out}")
+            logger.info(f"Capture finished, {len(cap)} packets saved to {pcap_file_out}")
 
         def list_eth_interfaces():
             eths = {}
@@ -624,11 +628,11 @@ class CSHelper:
 
                     #if st.button("🚀 Replay & Capture"):
                     #with st.spinner("Sending and capturing..."):
-                    print(iface_out)
-                    print(iface_in)
-                    print(src_ip_out)
-                    print(pcap_file_out)
-                    print(pcap_file_in)
+                    logger.debug(f"iface_out: {iface_out}")
+                    logger.debug(f"iface_in: {iface_in}")
+                    logger.debug(f"src_ip_out: {src_ip_out}")
+                    logger.debug(f"pcap_file_out: {pcap_file_out}")
+                    logger.debug(f"pcap_file_in: {pcap_file_in}")
 
                     #run first flask_pcap_backend.py
                     res = requests.post("http://localhost:8050/replay_and_capture", json={
@@ -637,7 +641,7 @@ class CSHelper:
                         "src_mac": src_mac_out,
                         "pcap_file_in": pcap_file_in,
                         "pcap_file_out": pcap_file_out
-                    })
+                    }, timeout=60)
 
                     if res.ok:
                         result = res.json()
@@ -683,11 +687,15 @@ class CSHelper:
                 st.write("Sending this file to SiMon PCAP Analyzer:", full_path)
                 payload = {"filepath": full_path}
                 
-                try:                    
-                    response = requests.post("http://localhost:5002/upload", json=payload)
+                try:
+                    response = requests.post("http://localhost:5002/upload", json=payload, timeout=30)
                     st.success(f"SiMon says: {response.text}")
-                except Exception as e:
-                    st.error(f"http://localhost:5002 is not set: {e}")
+                except requests.exceptions.Timeout:
+                    st.error("Request to http://localhost:5002 timed out")
+                except requests.exceptions.ConnectionError as e:
+                    st.error(f"http://localhost:5002 is not available: {e}")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Request error: {e}")
 
                 image = Image.open("plot2.png")
                 st.image(image, caption="Interference Detection", use_container_width=True)
@@ -695,12 +703,25 @@ class CSHelper:
                 image = Image.open("plot1.png")
                 st.image(image, caption="Equalized Rx Constellation", use_container_width=True)
 
-                while True:
-                    status = requests.get("http://localhost:5002/progress").json()
-                    st.write(f"Analyzer Status: {status['status']}")
-                    if "Completed" in status['status'] or "Error" in status['status'] or "Idle" in status['status']:
-                        break
+                # Poll for analyzer status with 300 second timeout (5 minutes for long operations)
+                poll_start_time = time.time()
+                poll_timeout = 300  # 5 minutes
+                while time.time() - poll_start_time < poll_timeout:
+                    try:
+                        status_response = requests.get("http://localhost:5002/progress", timeout=15)
+                        status = status_response.json()
+                        st.write(f"Analyzer Status: {status['status']}")
+                        if "Completed" in status['status'] or "Error" in status['status'] or "Idle" in status['status']:
+                            break
+                    except requests.exceptions.Timeout:
+                        st.warning("Status check timed out, retrying...")
+                    except requests.exceptions.ConnectionError:
+                        st.warning("Connection lost, retrying...")
+                    except requests.exceptions.RequestException as e:
+                        logger.warning(f"Status check error: {e}")
                     time.sleep(10)
+                else:
+                    st.warning(f"Analyzer status polling timed out after {poll_timeout} seconds")
                     
         return
 

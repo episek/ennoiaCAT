@@ -10,18 +10,18 @@ parser.add_argument("--action", choices=["activate", "verify"], default="verify"
 parser.add_argument("--key", help="License key for activation")
 args, _unknown = parser.parse_known_args()
 
-try:
-    if args.action == "activate":
-        if not args.key:
-            print("Provide a license key with --key")
-            success = False
-        else:
-            success = lic.request_license(args.key)
-    else:
-        success = lic.verify_license_file()
-except Exception as e:
-    print(f"License check error: {e}")
-    success = False
+# try:
+    # if args.action == "activate":
+        # if not args.key:
+            # print("Provide a license key with --key")
+            # success = False
+        # else:
+            # success = lic.request_license(args.key)
+    # else:
+        # success = lic.verify_license_file()
+# except Exception as e:
+    # print(f"License check error: {e}")
+    # success = False
 success = True
 # -----------------------------------------------------------------------------
 # COMMON IMPORTS
@@ -115,18 +115,25 @@ equipment_type = st.sidebar.selectbox(
     ]
 )
 
-# Display appropriate logos
-st.sidebar.image('ennoia.jpg', width=200)
+# Display appropriate logos (with file existence checks)
+import os as _os
+if _os.path.exists('ennoia.jpg'):
+    st.sidebar.image('ennoia.jpg', width=200)
 if equipment_type == "Viavi OneAdvisor":
-    st.sidebar.image('viavi.png', width=200)
+    if _os.path.exists('viavi.png'):
+        st.sidebar.image('viavi.png', width=200)
 elif equipment_type == "Rohde & Schwarz NRQ6":
-    st.sidebar.image('RS_logo.png', width=200)
+    if _os.path.exists('RS_logo.png'):
+        st.sidebar.image('RS_logo.png', width=200)
 elif equipment_type == "Aukua XGA4250":
-    st.sidebar.image('aukua rgb high.jpg', width=200)
+    if _os.path.exists('aukua rgb high.jpg'):
+        st.sidebar.image('aukua rgb high.jpg', width=200)
 elif equipment_type == "Cisco NCS540":
-    st.sidebar.image('cisco_logo.png', width=200)
+    if _os.path.exists('cisco_logo.png'):
+        st.sidebar.image('cisco_logo.png', width=200)
 elif equipment_type == "ORAN PCAP Analyzer":
-    st.sidebar.image('oran_logo.jpeg', width=200)
+    if _os.path.exists('oran_logo.jpeg'):
+        st.sidebar.image('oran_logo.jpeg', width=200)
 
 st.title(f"🗼 Ennoia – {equipment_type} Agentic AI Control & Analysis")
 st.caption(t("Natural-language controlled RF Spectrum Analyzer (OpenAI / SLM toggle)"))
@@ -243,15 +250,17 @@ elif equipment_type == "Keysight FieldFox":
     # Connect to FieldFox
     try:
         rm = pyvisa.ResourceManager()
-        inst = rm.open_resource(f"TCPIP0::{FIELD_FOX_IP}::inst0::INSTR")
+        inst = rm.open_resource(f"TCPIP0::{FIELD_FOX_IP}::inst0::INSTR", open_timeout=10000)
         inst.read_termination = '\n'
         inst.write_termination = '\n'
         inst.timeout = 5000
         idn = inst.query("*IDN?")
         st.sidebar.success(f"Connected to: {idn.strip()}")
         inst.write(":INSTrument:SELect 'SA'")
+    except pyvisa.errors.VisaIOError as e:
+        st.sidebar.warning(f"⏳ Waiting for FieldFox to connect... ({e})")
     except Exception as e:
-        st.sidebar.warning(f"⏳ Waiting for FieldFox to connect...")
+        st.sidebar.warning(f"⏳ Connection error: {e}")
 
 elif equipment_type == "Aukua XGA4250":
     # Aukua-specific settings

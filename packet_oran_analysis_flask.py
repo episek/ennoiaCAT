@@ -678,8 +678,11 @@ def blind_interference_detection(rx_frame, start_slot, numLayers=4, numREs=3276,
             if layer < numLayers:
                 # Get all odd REs in this PRB from DMRS symbol 2
                 odd_res = np.arange(re_start + 1, re_end, 2)
-                if odd_res[-1] >= numREs:
+                if len(odd_res) > 0 and odd_res[-1] >= numREs:
                     odd_res = odd_res[:-1]
+                if len(odd_res) == 0:
+                    evm_PRB[layer, prb_idx] = 1e-12
+                    continue
                 data = rx_frame[start_slot, 2, layer, odd_res]
 
                 if len(data) > 0 and np.any(data != 0):
@@ -1166,7 +1169,7 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
         # Frame selection logic
         if has_tx_reference:
             # Original logic when CSV files are available
-            if (start_slot >= 4) & (start_slot <= 5):
+            if (start_slot >= 4) and (start_slot <= 5):
                 rx_framec1 = rx_frame
                 print(f"Using rx_frame for equalization (start_slot={start_slot})")
             else:
@@ -1475,6 +1478,19 @@ def upload():
         if not filepath or not os.path.exists(filepath):
             progress_status = {"status": "Error: Invalid file path"}
             return jsonify({"error": "Invalid file path"}), 400
+
+        # Path traversal protection - normalize and validate path
+        filepath = os.path.normpath(os.path.abspath(filepath))
+        if ".." in filepath or not filepath.endswith(('.pcap', '.pcapng')):
+            progress_status = {"status": "Error: Invalid file path or extension"}
+            return jsonify({"error": "Invalid file path or extension"}), 400
+
+        # File size check to prevent DoS (max 500MB)
+        max_file_size = 500 * 1024 * 1024  # 500 MB
+        file_size = os.path.getsize(filepath)
+        if file_size > max_file_size:
+            progress_status = {"status": f"Error: File too large ({file_size / 1024 / 1024:.1f} MB > 500 MB limit)"}
+            return jsonify({"error": f"File too large. Max size: 500 MB"}), 400
 
         if not SCAPY_AVAILABLE:
             progress_status = {"status": "Error: scapy not installed"}

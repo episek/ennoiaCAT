@@ -6,11 +6,16 @@ via Flask backend (since pyshark cannot run directly in Streamlit).
 
 import os
 import json
+import logging
 import requests
 import numpy as np
 import pandas as pd
 import streamlit as st
 from openai import OpenAI
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Flask server configuration
 FLASK_HOST = "127.0.0.1"
@@ -68,23 +73,23 @@ class ORANHelper:
             if torch.cuda.is_available():
                 free_mem = torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)
                 free_mem_gb = free_mem / (1024**3)
-                print(f"Available GPU memory: {free_mem_gb:.2f} GB")
+                logger.info(f"Available GPU memory: {free_mem_gb:.2f} GB")
 
                 if free_mem_gb < 1.0:
-                    print("Not enough GPU memory, using CPU instead")
+                    logger.warning("Not enough GPU memory, using CPU instead")
                     device = "cpu"
                 else:
                     device = "cuda"
             else:
                 device = "cpu"
 
-            print(f"Loading SLM model: {model_name} on {device}...")
+            logger.info(f"Loading SLM model: {model_name} on {device}...")
 
             # Try local first, fall back to download
             try:
                 tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-            except Exception:
-                print("Model not cached locally, downloading...")
+            except OSError:
+                logger.info("Model not cached locally, downloading...")
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
             if device == "cuda":
@@ -104,10 +109,10 @@ class ORANHelper:
                         low_cpu_mem_usage=True
                     )
                     # Don't call .to() when using device_map="auto"
-                    print(f"SLM model loaded successfully with 4-bit quantization")
+                    logger.info("SLM model loaded successfully with 4-bit quantization")
                     return tokenizer, model, device
-                except Exception as cuda_error:
-                    print(f"CUDA 4-bit load failed: {cuda_error}, trying float16...")
+                except (RuntimeError, ImportError) as cuda_error:
+                    logger.warning(f"CUDA 4-bit load failed: {cuda_error}, trying float16...")
                     torch.cuda.empty_cache()
                     gc.collect()
 
@@ -119,16 +124,16 @@ class ORANHelper:
                             device_map="auto",
                             low_cpu_mem_usage=True
                         )
-                        print(f"SLM model loaded successfully with float16")
+                        logger.info("SLM model loaded successfully with float16")
                         return tokenizer, model, device
-                    except Exception as fp16_error:
-                        print(f"CUDA float16 load failed: {fp16_error}, falling back to CPU")
+                    except RuntimeError as fp16_error:
+                        logger.warning(f"CUDA float16 load failed: {fp16_error}, falling back to CPU")
                         torch.cuda.empty_cache()
                         gc.collect()
                         device = "cpu"
 
             # CPU loading - explicitly disable features that cause meta tensor issues
-            print("Loading model on CPU (this may take a moment)...")
+            logger.info("Loading model on CPU (this may take a moment)...")
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32,
@@ -140,12 +145,11 @@ class ORANHelper:
             if next(model.parameters()).device.type != device:
                 model = model.to(device)
 
-            print(f"SLM model loaded successfully on {device}")
+            logger.info(f"SLM model loaded successfully on {device}")
             return tokenizer, model, device
         except Exception as e:
+            logger.error(f"Failed to load local model: {e}", exc_info=True)
             st.error(f"Failed to load local model: {e}")
-            import traceback
-            traceback.print_exc()
             return None, None, "cpu"
 
     def get_system_prompt(self):
