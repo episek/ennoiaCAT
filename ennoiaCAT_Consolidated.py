@@ -121,29 +121,41 @@ ALL_EQUIPMENT = [
 ]
 ENABLED_EQUIPMENT = ["tinySA"]  # Only tinySA enabled in this version
 
-# Format options with (Coming Soon) for disabled equipment
-def format_equipment_option(equip):
-    if equip in ENABLED_EQUIPMENT:
-        return equip
-    return f"{equip} (Coming Soon)"
-
-equipment_options = [format_equipment_option(e) for e in ALL_EQUIPMENT]
+# Custom CSS to style disabled options (greyed out appearance)
+st.markdown("""
+<style>
+/* Grey out disabled equipment options in sidebar selectbox dropdown */
+section[data-testid="stSidebar"] div[data-baseweb="select"] ul[role="listbox"] li:not(:first-child) {
+    color: #999999 !important;
+    opacity: 0.6;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] ul[role="listbox"] li:first-child {
+    color: inherit !important;
+    font-weight: 600;
+}
+/* Also style the popover/menu options */
+div[data-baseweb="popover"] ul[role="listbox"] li:not(:first-child) {
+    color: #888888 !important;
+    opacity: 0.5;
+}
+div[data-baseweb="popover"] ul[role="listbox"] li:first-child {
+    color: inherit !important;
+    font-weight: 600;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Default to tinySA (index 0)
-selected_equipment_display = st.sidebar.selectbox(
+equipment_type = st.sidebar.selectbox(
     "Select Equipment",
-    equipment_options,
+    ALL_EQUIPMENT,
     index=0
 )
 
-# Extract actual equipment name (remove " (Coming Soon)" suffix)
-equipment_type = selected_equipment_display.replace(" (Coming Soon)", "")
-
 # Check if selected equipment is enabled
 if equipment_type not in ENABLED_EQUIPMENT:
-    st.sidebar.warning(f"⚠️ {equipment_type} is not available in this version.")
-    st.sidebar.info("This production build supports **tinySA** only. Please select tinySA to continue.")
-    st.error(f"**{equipment_type}** is not available in this production version. Please select **tinySA** from the sidebar.")
+    st.sidebar.error(f"⚠️ {equipment_type} not available")
+    st.error(f"**{equipment_type}** is not available in this version. Please select **tinySA**.")
     st.stop()
 
 import os as _os
