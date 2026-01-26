@@ -18,16 +18,12 @@ Servers:
 """
 
 import os
-import sys
 import csv
-import json
 import time
 import datetime
 import io
 import base64
-import struct
 from threading import Thread, Event
-from io import StringIO
 
 import numpy as np
 import pandas as pd
@@ -36,11 +32,10 @@ matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 from scipy.ndimage import uniform_filter1d
 
-from flask import Flask, request, jsonify, render_template_string, session
+from flask import Flask, request, jsonify, render_template_string
 import markdown2
 
 # OpenAI for report generation
-import openai
 from openai import OpenAI
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -656,7 +651,6 @@ def blind_interference_detection(rx_frame, start_slot, numLayers=4, numREs=3276,
     """
     M1 = 4  # QPSK for DMRS
     num_prbs = numREs // PRB
-    window_size = PRB  # Use PRB-sized windows for EVM calculation
 
     # Initialize EVM arrays per PRB per layer
     evm_PRB = np.zeros((numLayers, num_prbs))
@@ -1791,20 +1785,11 @@ def generate_report(data, fname, model_selection=None):
     if model_selection is None:
         model_selection = ["OpenAI"]
 
-    formatted_data = data
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     safe_fname = f"`{fname}`"
     safe_now = f"`{now}`"
     safe_interf = f"`{interf}`"
-    safe_interf_start_L0 = f"`{layer_interf_start[0]}`"
-    safe_interf_end_L0 = f"`{layer_interf_end[0]}`"
-    safe_interf_start_L1 = f"`{layer_interf_start[1]}`"
-    safe_interf_end_L1 = f"`{layer_interf_end[1]}`"
-    safe_interf_start_L2 = f"`{layer_interf_start[2]}`"
-    safe_interf_end_L2 = f"`{layer_interf_end[2]}`"
-    safe_interf_start_L3 = f"`{layer_interf_start[3]}`"
-    safe_interf_end_L3 = f"`{layer_interf_end[3]}`"
 
     if (interf == 0):
         report_header_template = pd.DataFrame({
