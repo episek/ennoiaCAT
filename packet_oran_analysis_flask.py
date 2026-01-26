@@ -212,6 +212,7 @@ except ImportError:
 progress_status = {"status": "Idle"}
 uploaded_filename = None
 file_uploaded_event = Event()
+current_detection_mode = "DMRS-Based (Standard)"  # Track current mode for plot display
 genReport = None
 prompt = ""
 interf = 0
@@ -219,6 +220,13 @@ layer_interf_start = [0, 0, 0, 0]
 layer_interf_end = [272, 272, 272, 272]  # Default to full range (no interference)
 layer_has_interf = [False, False, False, False]  # Per-layer interference flag
 evma_db = [0, 0, 0, 0]
+
+# AI-based detection results (used in "Both" mode)
+ai_interf = 0
+ai_interf_start = [0, 0, 0, 0]
+ai_interf_end = [272, 272, 272, 272]
+ai_has_interf = [False, False, False, False]
+ai_evm_results_global = [0, 0, 0, 0]
 
 # Frame parameters (defaults for 100MHz, 30kHz SCS)
 numSlots = 20
@@ -939,7 +947,7 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
         has_tx_reference: If False, use DMRS-based SNR/EVM calculation (no tx_frame_iq.csv)
     """
     global interf, layer_interf_start, layer_interf_end, layer_has_interf, evma_db, numLayers
-    global ai_interf_start, ai_interf_end, ai_has_interf
+    global ai_interf_start, ai_interf_end, ai_has_interf, ai_interf, ai_evm_results_global
 
     # Calculate number of PRBs from REs (12 REs per PRB)
     num_prbs = num_res // 12  # 273 for 100MHz
@@ -949,9 +957,11 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
     layer_interf_end = [max_prb, max_prb, max_prb, max_prb]  # Full range = no interference
     layer_has_interf = [False, False, False, False]
     # Initialize AI interference results (will be set in AI and Both modes)
-    ai_interf_start = None
-    ai_interf_end = None
-    ai_has_interf = None
+    ai_interf_start = [0, 0, 0, 0]
+    ai_interf_end = [max_prb, max_prb, max_prb, max_prb]
+    ai_has_interf = [False, False, False, False]
+    ai_interf = 0
+    ai_evm_results_global = [0.0] * num_layers
     interf = 0
     numLayers = num_layers
     eq_frame_mimo = None
@@ -1113,6 +1123,7 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
 
             # Store AI-based EVM results for "Both" mode (before DMRS overwrites)
             ai_evm_results = evm_results.copy()
+            ai_evm_results_global[:] = evm_results  # Store in global for report generation
             print(f"AI-Based EVM results stored: {ai_evm_results}")
 
             # Create AI constellation plot for Both mode (plot3.png)
@@ -1149,13 +1160,17 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             ai_interf_start = [0, 0, 0, 0]
             ai_interf_end = [max_prb, max_prb, max_prb, max_prb]
             ai_has_interf = [False, False, False, False]
+            ai_interf = 0
+            ai_evm_results_global[:] = [0.0] * numLayers
 
     # Initialize AI results if not in AI mode
     if detection_mode == "DMRS-Based (Standard)":
         ai_evm_results = None
-        ai_interf_start = None
-        ai_interf_end = None
-        ai_has_interf = None
+        ai_interf_start = [0, 0, 0, 0]
+        ai_interf_end = [max_prb, max_prb, max_prb, max_prb]
+        ai_has_interf = [False, False, False, False]
+        ai_interf = 0
+        ai_evm_results_global[:] = [0.0] * numLayers
 
     # -------------------------------------------------------------------------
     # DMRS-BASED INTERFERENCE DETECTION
@@ -1514,6 +1529,9 @@ def upload():
         # Detection mode: "DMRS-Based (Standard)", "AI-Based Blind Detection", or "Both"
         detection_mode = data.get("detection_mode", "DMRS-Based (Standard)")
 
+        global current_detection_mode
+        current_detection_mode = detection_mode  # Update global for plot display
+
         uploaded_filename = filepath
         progress_status = {"status": f"Processing: {os.path.basename(filepath)}"}
 
@@ -1717,10 +1735,18 @@ def get_report():
 
 @app.route('/plots/<filename>', methods=['GET'])
 def get_plot(filename):
-    """Return plot as base64"""
+    """Return plot as base64. In 'Both' mode, return AI-based plots instead."""
+    # In "Both" mode, map plot1/plot2 to AI plots (plot3/plot4)
+    actual_filename = filename
+    if current_detection_mode == "Both":
+        if filename == "plot1.png":
+            actual_filename = "plot3.png"  # AI constellation
+        elif filename == "plot2.png":
+            actual_filename = "plot4.png"  # AI interference detection
+
     if filename in ["plot1.png", "plot2.png"]:
-        if os.path.exists(filename):
-            with open(filename, "rb") as f:
+        if os.path.exists(actual_filename):
+            with open(actual_filename, "rb") as f:
                 encoded = base64.b64encode(f.read()).decode('utf-8')
             return jsonify({"image": encoded})
     return jsonify({"error": "Plot not found"})
@@ -1760,6 +1786,7 @@ def df_to_markdown_table(df):
 def generate_report(data, fname, model_selection=None):
     """Generates a report using OpenAI or SLM based on model_selection"""
     global prompt, progress_status
+    global ai_interf, ai_interf_start, ai_interf_end, ai_has_interf, ai_evm_results_global, current_detection_mode
 
     if model_selection is None:
         model_selection = ["OpenAI"]
@@ -1842,6 +1869,51 @@ def generate_report(data, fname, model_selection=None):
 
     aligned_summary = align_markdown_table(data_summary_filled)
 
+    # Build AI-Based Detection Results section for "Both" mode
+    ai_section = ""
+    if current_detection_mode == "Both":
+        # Format AI interference results
+        ai_interf_l0 = "None" if not ai_has_interf[0] else f"Detected in PRBs {ai_interf_start[0]+1}-{ai_interf_end[0]}"
+        ai_interf_l1 = "None" if not ai_has_interf[1] else f"Detected in PRBs {ai_interf_start[1]+1}-{ai_interf_end[1]}"
+        ai_interf_l2 = "None" if not ai_has_interf[2] else f"Detected in PRBs {ai_interf_start[2]+1}-{ai_interf_end[2]}"
+        ai_interf_l3 = "None" if not ai_has_interf[3] else f"Detected in PRBs {ai_interf_start[3]+1}-{ai_interf_end[3]}"
+
+        ai_summary_template = """
+    | **AI Detection Variable**          | **Value**     | **Description**                                             |
+    |                                    |               |                                                             |
+    | **Detection Method**               | Blind QPSK    | AI-based blind detection without N_ID/nSCID parameters.     |
+    | **AI Interference Flag**           | `{ai_interf}` | AI-detected interference (1=found, 0=none).                 |
+    | **AI Interference - L0**           | {ai_l0}       | AI-detected interference in layer 0.                        |
+    | **AI Interference - L1**           | {ai_l1}       | AI-detected interference in layer 1.                        |
+    | **AI Interference - L2**           | {ai_l2}       | AI-detected interference in layer 2.                        |
+    | **AI Interference - L3**           | {ai_l3}       | AI-detected interference in layer 3.                        |
+    | **AI EVM - L0 (dB)**               | {ai_evm0:.2f} | AI-based EVM measurement for layer 0.                       |
+    | **AI EVM - L1 (dB)**               | {ai_evm1:.2f} | AI-based EVM measurement for layer 1.                       |
+    | **AI EVM - L2 (dB)**               | {ai_evm2:.2f} | AI-based EVM measurement for layer 2.                       |
+    | **AI EVM - L3 (dB)**               | {ai_evm3:.2f} | AI-based EVM measurement for layer 3.                       |
+    """
+        ai_summary_filled = ai_summary_template.format(
+            ai_interf=ai_interf,
+            ai_l0=ai_interf_l0, ai_l1=ai_interf_l1, ai_l2=ai_interf_l2, ai_l3=ai_interf_l3,
+            ai_evm0=ai_evm_results_global[0], ai_evm1=ai_evm_results_global[1],
+            ai_evm2=ai_evm_results_global[2], ai_evm3=ai_evm_results_global[3]
+        )
+        aligned_ai_summary = align_markdown_table(ai_summary_filled)
+        ai_section = f"""
+
+    ## AI-Based Blind Detection Results
+
+    {aligned_ai_summary}
+    """
+
+    # Determine summary section title based on detection mode
+    if current_detection_mode == "AI-Based Blind Detection":
+        summary_title = "Fronthaul Data Summary (AI-Based)"
+    elif current_detection_mode == "Both":
+        summary_title = "Fronthaul Data Summary (DMRS-Based)"
+    else:
+        summary_title = "Fronthaul Data Summary (DMRS-Based)"
+
     prompt = f"""
     You are an O-RAN fronthaul packet analyzer following the O-RAN fronthaul specification from www.o-ran.org.
     Generate a professional report summarizing the following structured O-RAN fronthaul data:
@@ -1865,9 +1937,10 @@ def generate_report(data, fname, model_selection=None):
     {markdown_header}
 
 
-    ## Fronthaul Data Summary
+    ## {summary_title}
 
     {aligned_summary}
+    {ai_section}
 
     ## Detailed Analysis
     **1. Sub-carrier Spacing** - 30 KHz reflects granularity, influencing latency and spectral efficiency.
@@ -1937,15 +2010,17 @@ app1 = Flask("Report")
 
 @app1.route("/")
 def report_page():
-    """Display the analysis report"""
+    """Display the analysis report."""
     global genReport
 
     print("[App1] Waiting for file upload...")
     file_uploaded_event.wait()
     print(f"[App1] Detected uploaded file: {uploaded_filename}")
+    print(f"[App1] Current detection mode: {current_detection_mode}")
 
     if genReport:
         html_report = markdown2.markdown(genReport, extras=["tables"])
+
         html_template = """
         <!DOCTYPE html>
         <html>
@@ -1978,13 +2053,54 @@ def report_page():
 app2 = Flask("Plots")
 
 def create_plot():
-    """Create the analysis plots"""
+    """Create the analysis plots based on detection mode."""
     print("[App2] Waiting for file upload...")
     file_uploaded_event.wait()
     print(f"[App2] Detected uploaded file: {uploaded_filename}")
+    print(f"[App2] Current detection mode: {current_detection_mode}")
 
-    # Load the data symbols for plotting
     try:
+        # In "Both" mode, display AI plots (plot3.png and plot4.png)
+        if current_detection_mode == "Both":
+            if os.path.exists("plot3.png") and os.path.exists("plot4.png"):
+                from PIL import Image
+                img1 = Image.open("plot3.png")
+                img2 = Image.open("plot4.png")
+                total_width = max(img1.width, img2.width)
+                total_height = img1.height + img2.height
+                combined = Image.new('RGB', (total_width, total_height), 'white')
+                combined.paste(img1, (0, 0))
+                combined.paste(img2, (0, img1.height))
+                buf = io.BytesIO()
+                combined.save(buf, format='PNG')
+                buf.seek(0)
+                plot_data = base64.b64encode(buf.read()).decode('utf-8')
+                print("[App2] Returning AI-based plots (plot3+plot4) for 'Both' mode")
+                return plot_data
+            else:
+                print("[App2] AI plots not found for 'Both' mode, falling back")
+
+        # In "AI-Based Blind Detection" mode, display AI plots (plot1.png and plot2.png)
+        if current_detection_mode == "AI-Based Blind Detection":
+            if os.path.exists("plot1.png") and os.path.exists("plot2.png"):
+                from PIL import Image
+                img1 = Image.open("plot1.png")
+                img2 = Image.open("plot2.png")
+                total_width = max(img1.width, img2.width)
+                total_height = img1.height + img2.height
+                combined = Image.new('RGB', (total_width, total_height), 'white')
+                combined.paste(img1, (0, 0))
+                combined.paste(img2, (0, img1.height))
+                buf = io.BytesIO()
+                combined.save(buf, format='PNG')
+                buf.seek(0)
+                plot_data = base64.b64encode(buf.read()).decode('utf-8')
+                print("[App2] Returning AI-based plots (plot1+plot2) for 'AI-Based' mode")
+                return plot_data
+            else:
+                print("[App2] AI plots not found for 'AI-Based' mode, falling back")
+
+        # Default: Load data_symbols.csv for DMRS-based or fallback
         data = np.loadtxt('data_symbols.csv', delimiter=',')
         iq_complex = data[:, 0] + 1j * data[:, 1]
 
