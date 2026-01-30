@@ -32,6 +32,8 @@ import time
 import re
 import logging
 import os
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -357,13 +359,34 @@ elif equipment_type == "ORAN PCAP Analyzer":
 
     helper = ORANHelper()
 
-    # Check Flask server status
+    # Check Flask server status and auto-launch if needed
     st.sidebar.subheader("🔌 Flask Server Status")
     if helper.check_flask_server():
         st.sidebar.success("Flask server is running")
     else:
-        st.sidebar.warning("Flask server not detected. Please start packet_oran_analysis_flask.py")
-        st.sidebar.code("python packet_oran_analysis_flask.py", language="bash")
+        # Auto-launch Flask server
+        if "flask_process" not in st.session_state or st.session_state.flask_process is None or st.session_state.flask_process.poll() is not None:
+            flask_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "packet_oran_analysis_flask.py")
+            if os.path.exists(flask_script):
+                st.sidebar.info("Starting Flask server...")
+                st.session_state.flask_process = subprocess.Popen(
+                    [sys.executable, flask_script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                # Wait briefly for server to start
+                time.sleep(3)
+                if helper.check_flask_server():
+                    st.sidebar.success("Flask server started automatically")
+                else:
+                    st.sidebar.warning("Flask server is starting up, please wait...")
+                    st.rerun()
+            else:
+                st.sidebar.error("packet_oran_analysis_flask.py not found")
+        else:
+            st.sidebar.warning("Flask server is starting up, please wait...")
+            time.sleep(2)
+            st.rerun()
 
     # File upload section
     st.sidebar.subheader("📁 PCAP File")
