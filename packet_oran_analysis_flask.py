@@ -23,6 +23,7 @@ import json
 import time
 import datetime
 import io
+import glob
 import base64
 from threading import Thread, Event
 
@@ -228,6 +229,58 @@ ai_evm_results_global = [0, 0, 0, 0]
 ai_confidence = [0.0, 0.0, 0.0, 0.0]  # Per-layer combined confidence (0-100%)
 DETECTION_HISTORY_FILE = "ai_detection_history.json"
 ai_detection_history = {}  # { "layer_0": { "50-100": 3, ... }, ... }
+
+# CNN-based interference detection
+CNN_MODEL_PATH = "cnn_interference_model.pth"
+CNN_TRAINING_DATA_DIR = "cnn_training_data"
+cnn_detector = None          # CNNInterferenceDetector instance or None
+use_cnn_detection = False    # Auto-set True if model loads successfully
+cnn_proba_global = None      # (4, 273) CNN probabilities from last run
+
+
+def init_cnn_detector():
+    """Try to load the CNN interference detector. Never crashes."""
+    global cnn_detector, use_cnn_detection
+    try:
+        from cnn_interference_model import CNNInterferenceDetector
+        cnn_detector = CNNInterferenceDetector(CNN_MODEL_PATH)
+        if cnn_detector.is_available():
+            use_cnn_detection = True
+            print("CNN interference detector: ENABLED")
+        else:
+            use_cnn_detection = False
+            print("CNN interference detector: model not available (threshold-only mode)")
+    except Exception as exc:
+        cnn_detector = None
+        use_cnn_detection = False
+        print(f"CNN interference detector: import failed ({exc}) — threshold-only mode")
+
+
+# Initialise CNN detector at import time (non-blocking)
+init_cnn_detector()
+
+
+def save_cnn_training_sample(evm_db_PRB, drop_regions_per_layer, num_layers):
+    """Save current EVM + threshold labels as a CNN training CSV.
+
+    Converts threshold ``drop_regions_per_layer`` to per-PRB binary labels
+    and writes to ``cnn_training_data/labels_YYYYMMDD_HHMMSS.csv``.
+    """
+    import datetime as _dt
+    os.makedirs(CNN_TRAINING_DATA_DIR, exist_ok=True)
+    num_prbs = evm_db_PRB.shape[1]
+    rows = {"PRB": list(range(num_prbs))}
+    for layer in range(num_layers):
+        rows[f"Layer{layer}_EVM_dB"] = list(evm_db_PRB[layer])
+        labels = np.zeros(num_prbs, dtype=int)
+        for start, end in drop_regions_per_layer[layer]:
+            labels[max(0, start):min(end, num_prbs)] = 1
+        rows[f"Layer{layer}_Label"] = list(labels)
+    df = pd.DataFrame(rows)
+    stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(CNN_TRAINING_DATA_DIR, f"labels_{stamp}.csv")
+    df.to_csv(path, index=False, float_format="%.4f")
+    print(f"CNN training sample saved: {path} ({num_prbs} PRBs, {num_layers} layers)")
 
 
 def load_detection_history():
@@ -752,13 +805,37 @@ def blind_interference_detection(rx_frame, start_slot, numLayers=4, numREs=3276,
     upper_threshold = 10.0
     lower_threshold = -10.0
 
-    # Detect interference regions per layer
+    # Detect interference regions per layer (threshold state machine)
     drop_regions_per_layer = []
     for layer in range(numLayers):
         regions = detect_snr_drop_regions(snr_diff_layers[layer], lower_threshold, upper_threshold)
         # Filter out very short regions (1-2 PRBs) as they're likely false detections
         filtered_regions = [(start, end) for start, end in regions if (end - start) >= 3]
         drop_regions_per_layer.append(filtered_regions)
+
+    # --- CNN overlay (additive — threshold always runs) ---
+    global cnn_proba_global
+    num_prbs = evm_db_PRB.shape[1]
+    cnn_proba_global = np.zeros((numLayers, num_prbs), dtype=np.float32)
+
+    if use_cnn_detection and cnn_detector is not None and cnn_detector.is_available():
+        from cnn_interference_model import regions_from_mask
+        print("Running CNN interference detector on EVM per PRB...")
+        for layer in range(numLayers):
+            proba = cnn_detector.predict_proba(evm_db_PRB[layer])
+            cnn_proba_global[layer, :len(proba)] = proba
+            cnn_regions = regions_from_mask(proba >= 0.5, min_region_size=3)
+            if cnn_regions:
+                # Union: merge threshold regions with CNN regions
+                # Build per-PRB mask from both sets
+                mask = np.zeros(num_prbs, dtype=bool)
+                for s, e in drop_regions_per_layer[layer]:
+                    mask[max(0, s):min(e, num_prbs)] = True
+                for s, e in cnn_regions:
+                    mask[max(0, s):min(e, num_prbs)] = True
+                # Re-extract contiguous regions from the union mask
+                drop_regions_per_layer[layer] = regions_from_mask(mask, min_region_size=3)
+        print("CNN detection merged with threshold results (union).")
 
     return drop_regions_per_layer, evm_db_PRB, snr_diff_layers
 
@@ -869,8 +946,16 @@ def calculate_ai_confidence(evm_db_PRB, blind_regions, numLayers):
 
         hist_confidence = min(100.0, hit_count * 20.0)  # 5 matches -> 100%
 
-        # --- Combined confidence ---
-        combined = 0.6 * evm_confidence + 0.4 * hist_confidence
+        # --- Combined confidence (with optional CNN component) ---
+        if use_cnn_detection and cnn_proba_global is not None:
+            # CNN confidence: mean probability across detected PRBs
+            if len(interf_prb_indices) > 0:
+                cnn_conf = float(np.mean(cnn_proba_global[layer, list(interf_prb_indices)])) * 100.0
+            else:
+                cnn_conf = 0.0
+            combined = 0.4 * evm_confidence + 0.3 * hist_confidence + 0.3 * cnn_conf
+        else:
+            combined = 0.6 * evm_confidence + 0.4 * hist_confidence
         combined = min(100.0, max(0.0, combined))
         confidences.append(combined)
 
@@ -1188,6 +1273,12 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             # Calculate AI confidence scores
             ai_confidence = calculate_ai_confidence(evm_db_PRB, blind_regions, numLayers)
             print(f"AI Confidence scores: {[f'{c:.1f}%' for c in ai_confidence]}")
+
+            # Auto-save CNN training sample (threshold labels bootstrap CNN training)
+            try:
+                save_cnn_training_sample(evm_db_PRB, blind_regions, numLayers)
+            except Exception as exc:
+                print(f"Warning: could not save CNN training sample: {exc}")
 
             # If AI-Based mode (not "Both"), use blind detection results for interference
             if detection_mode == "AI-Based Blind Detection":
@@ -1611,6 +1702,9 @@ def index():
                 <li><code>POST /upload</code> - Submit PCAP file for analysis</li>
                 <li><code>GET /progress</code> - Get analysis progress</li>
                 <li><code>GET /report</code> - Get generated report</li>
+                <li><code>POST /toggle_cnn</code> - Enable/disable CNN detection overlay</li>
+                <li><code>POST /train_cnn</code> - Train CNN from accumulated data</li>
+                <li><code>GET /cnn_status</code> - CNN model availability and sample count</li>
             </ul>
         </div>
     </body>
@@ -1633,6 +1727,63 @@ def reset_confidence():
     print("AI confidence scores and detection history have been reset.")
     return jsonify({"success": True, "message": "AI confidence levels reset to 0.0 for all layers.",
                     "ai_confidence": [0.0, 0.0, 0.0, 0.0]})
+
+
+@app.route('/toggle_cnn', methods=['POST'])
+def toggle_cnn():
+    """Enable or disable the CNN detection overlay (threshold always runs)."""
+    global use_cnn_detection
+    data = request.get_json(silent=True) or {}
+    enable = data.get("enable")
+    if enable is None:
+        # Toggle
+        use_cnn_detection = not use_cnn_detection
+    else:
+        use_cnn_detection = bool(enable)
+    # If enabling but detector not loaded, try loading
+    if use_cnn_detection and (cnn_detector is None or not cnn_detector.is_available()):
+        init_cnn_detector()
+    status = "enabled" if use_cnn_detection else "disabled"
+    return jsonify({"success": True, "cnn_enabled": use_cnn_detection,
+                    "message": f"CNN detection {status}."})
+
+
+@app.route('/train_cnn', methods=['POST'])
+def train_cnn():
+    """Trigger CNN training from accumulated labeled data (runs in background)."""
+    def _train_background():
+        try:
+            from cnn_interference_model import train_cnn_model
+            success = train_cnn_model(data_dir=CNN_TRAINING_DATA_DIR,
+                                      model_path=CNN_MODEL_PATH)
+            if success:
+                print("CNN training completed — reloading detector.")
+                init_cnn_detector()
+            else:
+                print("CNN training did not produce a model.")
+        except Exception as exc:
+            print(f"CNN training error: {exc}")
+
+    t = Thread(target=_train_background, daemon=True)
+    t.start()
+    # Count available samples
+    sample_count = len(glob.glob(os.path.join(CNN_TRAINING_DATA_DIR, "*.csv"))) if os.path.isdir(CNN_TRAINING_DATA_DIR) else 0
+    return jsonify({"success": True,
+                    "message": f"CNN training started in background ({sample_count} CSV files).",
+                    "sample_count": sample_count})
+
+
+@app.route('/cnn_status', methods=['GET'])
+def cnn_status():
+    """Return CNN model availability, sample count, and enabled state."""
+    sample_count = len(glob.glob(os.path.join(CNN_TRAINING_DATA_DIR, "*.csv"))) if os.path.isdir(CNN_TRAINING_DATA_DIR) else 0
+    model_exists = os.path.isfile(CNN_MODEL_PATH)
+    return jsonify({
+        "cnn_available": cnn_detector is not None and cnn_detector.is_available(),
+        "cnn_enabled": use_cnn_detection,
+        "model_file_exists": model_exists,
+        "training_samples": sample_count,
+    })
 
 
 @app.route('/progress', methods=['GET'])
@@ -1851,6 +2002,11 @@ def upload():
                 layer_data["ai_has_interference"] = ai_has_interf[i]
             # Add AI confidence for AI and Both modes
             layer_data["ai_confidence"] = float(ai_confidence[i]) if i < len(ai_confidence) else 0.0
+            # CNN probability (mean across PRBs for this layer)
+            if cnn_proba_global is not None and use_cnn_detection:
+                layer_data["cnn_probability"] = float(np.mean(cnn_proba_global[i])) if i < cnn_proba_global.shape[0] else None
+            else:
+                layer_data["cnn_probability"] = None
             layers_dict[f"layer_{i}"] = layer_data
 
         return jsonify({
@@ -1866,7 +2022,9 @@ def upload():
             "evm_per_prb_csv": "evm_per_prb.csv",
             "snr_per_prb_csv": "snr_per_prb.csv",
             "snr_diff_per_prb_csv": "snr_diff_per_prb.csv",
-            "layers": layers_dict
+            "layers": layers_dict,
+            "detection_method": "Threshold+CNN" if use_cnn_detection else "Threshold",
+            "cnn_available": cnn_detector is not None and cnn_detector.is_available(),
         })
 
     except Exception as e:
@@ -2026,13 +2184,17 @@ def generate_report(data, fname, model_selection=None):
     | **AI Confidence - L1 (%)**         | {ai_conf_l1:.1f}  | AI detection confidence for layer 1 (0-100%).           |
     | **AI Confidence - L2 (%)**         | {ai_conf_l2:.1f}  | AI detection confidence for layer 2 (0-100%).           |
     | **AI Confidence - L3 (%)**         | {ai_conf_l3:.1f}  | AI detection confidence for layer 3 (0-100%).           |
+    | **Detection Method**               | {det_method}  | Threshold-only or Threshold+CNN hybrid detection.           |
     """
+
+    det_method_str = "Threshold+CNN" if use_cnn_detection else "Threshold"
 
     data_summary_filled = data_summary_template.format(
         safe_interf=safe_interf, link_dir=link_dir, scs_str=scs_str,
         interf_l0=interf_l0, interf_l1=interf_l1, interf_l2=interf_l2, interf_l3=interf_l3,
         ai_conf_l0=ai_confidence[0], ai_conf_l1=ai_confidence[1],
-        ai_conf_l2=ai_confidence[2], ai_conf_l3=ai_confidence[3]
+        ai_conf_l2=ai_confidence[2], ai_conf_l3=ai_confidence[3],
+        det_method=det_method_str,
     )
 
     aligned_summary = align_markdown_table(data_summary_filled)
