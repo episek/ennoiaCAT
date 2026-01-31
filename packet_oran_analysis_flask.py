@@ -19,6 +19,7 @@ Servers:
 
 import os
 import csv
+import json
 import time
 import datetime
 import io
@@ -222,6 +223,35 @@ ai_interf_start = [0, 0, 0, 0]
 ai_interf_end = [272, 272, 272, 272]
 ai_has_interf = [False, False, False, False]
 ai_evm_results_global = [0, 0, 0, 0]
+
+# AI confidence scoring
+ai_confidence = [0.0, 0.0, 0.0, 0.0]  # Per-layer combined confidence (0-100%)
+DETECTION_HISTORY_FILE = "ai_detection_history.json"
+ai_detection_history = {}  # { "layer_0": { "50-100": 3, ... }, ... }
+
+
+def load_detection_history():
+    """Load detection history from JSON file."""
+    global ai_detection_history
+    if os.path.exists(DETECTION_HISTORY_FILE):
+        try:
+            with open(DETECTION_HISTORY_FILE, "r") as f:
+                ai_detection_history = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            ai_detection_history = {}
+    else:
+        ai_detection_history = {}
+    return ai_detection_history
+
+
+def save_detection_history():
+    """Save detection history to JSON file."""
+    global ai_detection_history
+    try:
+        with open(DETECTION_HISTORY_FILE, "w") as f:
+            json.dump(ai_detection_history, f, indent=2)
+    except IOError as e:
+        print(f"Warning: Could not save detection history: {e}")
 
 # Frame parameters (defaults for 100MHz, 30kHz SCS)
 numSlots = 20
@@ -733,6 +763,121 @@ def blind_interference_detection(rx_frame, start_slot, numLayers=4, numREs=3276,
     return drop_regions_per_layer, evm_db_PRB, snr_diff_layers
 
 
+def calculate_ai_confidence(evm_db_PRB, blind_regions, numLayers):
+    """
+    Calculate per-layer AI confidence for interference detection.
+
+    Combines two factors:
+    1. EVM-based confidence (0-100%): how strong the EVM difference is between
+       interference PRBs and clean PRBs. A 20 dB delta = 100%.
+    2. Historical confidence (0-100%): repeated detections at the same PRB location
+       across runs increase confidence. Reaches 100% after 5 consecutive matches.
+
+    Combined: 60% EVM-based + 40% historical (EVM weighted higher since physics-based).
+
+    Args:
+        evm_db_PRB: EVM in dB per PRB per layer (shape: numLayers x numPRBs)
+        blind_regions: List of list of (start, end) PRB tuples per layer
+        numLayers: Number of MIMO layers
+
+    Returns:
+        confidences: List of combined confidence percentages per layer (0-100)
+    """
+    global ai_detection_history
+
+    load_detection_history()
+
+    confidences = []
+    num_prbs = evm_db_PRB.shape[1]
+
+    for layer in range(numLayers):
+        layer_key = f"layer_{layer}"
+        regions = blind_regions[layer]
+
+        if not regions:
+            # No interference detected — compute confidence that layer is clean
+            # EVM-based clean confidence: low EVM variance across PRBs = high confidence
+            layer_evm = evm_db_PRB[layer]
+            evm_std = np.std(layer_evm)
+            # Map std to confidence: std < 2 dB -> 100%, std > 10 dB -> 0%
+            evm_clean_confidence = min(100.0, max(0.0, (10.0 - evm_std) * 12.5))
+
+            # Historical clean confidence: track consecutive clean runs
+            if layer_key not in ai_detection_history:
+                ai_detection_history[layer_key] = {}
+            clean_count = ai_detection_history[layer_key].get("clean", 0) + 1
+            ai_detection_history[layer_key]["clean"] = clean_count
+            hist_clean_confidence = min(100.0, clean_count * 20.0)  # 5 clean runs -> 100%
+
+            # Decay interference region counts (no interference this run)
+            decayed = {"clean": clean_count}
+            for region_key, count in ai_detection_history[layer_key].items():
+                if region_key == "clean":
+                    continue
+                new_count = count - 1
+                if new_count > 0:
+                    decayed[region_key] = new_count
+            ai_detection_history[layer_key] = decayed
+
+            combined = 0.6 * evm_clean_confidence + 0.4 * hist_clean_confidence
+            combined = min(100.0, max(0.0, combined))
+            confidences.append(combined)
+            continue
+
+        # --- EVM-based confidence ---
+        # Collect interference PRB indices
+        interf_prb_indices = set()
+        for start, end in regions:
+            for prb in range(max(0, start), min(end, num_prbs)):
+                interf_prb_indices.add(prb)
+
+        clean_prb_indices = [p for p in range(num_prbs) if p not in interf_prb_indices]
+
+        layer_evm = evm_db_PRB[layer]
+        if len(interf_prb_indices) > 0 and len(clean_prb_indices) > 0:
+            mean_interf_evm = np.mean(layer_evm[list(interf_prb_indices)])
+            mean_clean_evm = np.mean(layer_evm[clean_prb_indices])
+            evm_delta = mean_interf_evm - mean_clean_evm  # higher EVM = worse = interference
+            evm_confidence = min(100.0, max(0.0, evm_delta * 5.0))  # 20 dB delta -> 100%
+        else:
+            evm_confidence = 0.0
+
+        # --- Historical confidence ---
+        # Build region key from first detected region (primary)
+        region_key = f"{regions[0][0]}-{regions[0][1]}"
+
+        if layer_key not in ai_detection_history:
+            ai_detection_history[layer_key] = {}
+
+        # Increment hit count for detected region
+        hit_count = ai_detection_history[layer_key].get(region_key, 0) + 1
+        ai_detection_history[layer_key][region_key] = hit_count
+
+        # Decay counts for regions NOT seen this run; reset clean counter
+        current_region_keys = {f"{s}-{e}" for s, e in regions}
+        decayed = {}
+        for rk, count in ai_detection_history[layer_key].items():
+            if rk == "clean":
+                continue  # Reset clean streak when interference is detected
+            if rk in current_region_keys:
+                decayed[rk] = count
+            else:
+                new_count = count - 1
+                if new_count > 0:
+                    decayed[rk] = new_count
+        ai_detection_history[layer_key] = decayed
+
+        hist_confidence = min(100.0, hit_count * 20.0)  # 5 matches -> 100%
+
+        # --- Combined confidence ---
+        combined = 0.6 * evm_confidence + 0.4 * hist_confidence
+        combined = min(100.0, max(0.0, combined))
+        confidences.append(combined)
+
+    save_detection_history()
+    return confidences
+
+
 def compute_snr_per_prb_dmrs(eq_frame, N_ID, nSCID, start_slot, numLayers=4, numREs=3276, PRB=12):
     """
     Compute SNR per PRB using DMRS reference (for when tx_frame is not available).
@@ -942,6 +1087,7 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
     """
     global interf, layer_interf_start, layer_interf_end, layer_has_interf, evma_db, numLayers
     global ai_interf_start, ai_interf_end, ai_has_interf, ai_interf, ai_evm_results_global
+    global ai_confidence
 
     # Calculate number of PRBs from REs (12 REs per PRB)
     num_prbs = num_res // 12  # 273 for 100MHz
@@ -956,6 +1102,7 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
     ai_has_interf = [False, False, False, False]
     ai_interf = 0
     ai_evm_results_global = [0.0] * num_layers
+    ai_confidence = [0.0] * num_layers
     interf = 0
     numLayers = num_layers
     eq_frame_mimo = None
@@ -1038,6 +1185,10 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
             evma_db = evm_results
             print(f"AI-Based EVM results (from per-PRB): {evm_results}")
 
+            # Calculate AI confidence scores
+            ai_confidence = calculate_ai_confidence(evm_db_PRB, blind_regions, numLayers)
+            print(f"AI Confidence scores: {[f'{c:.1f}%' for c in ai_confidence]}")
+
             # If AI-Based mode (not "Both"), use blind detection results for interference
             if detection_mode == "AI-Based Blind Detection":
                 for layer in range(numLayers):
@@ -1076,7 +1227,8 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                     corrected /= np.sqrt((np.abs(corrected)**2).mean() + 1e-12)
 
                     plt.plot(np.real(corrected), np.imag(corrected), '.', alpha=0.5)
-                    plt.title(f'Phase-Corrected DMRS - Layer {layer} - EVM: {evm_results[layer]:.2f} dB')
+                    conf = ai_confidence[layer] if layer < len(ai_confidence) else 0.0
+                    plt.title(f'Phase-Corrected DMRS - Layer {layer} - EVM: {evm_results[layer]:.2f} dB | Conf: {conf:.0f}%')
                     plt.xlabel('I')
                     plt.ylabel('Q')
                     plt.grid(True)
@@ -1135,7 +1287,8 @@ def analyze_capture(rx_frame, tx_frame, start_slot, N_ID_val, nSCID_val, num_lay
                 corrected = correct_qpsk_phase_drift(corrected) * np.exp(-1j * np.pi/4)
                 corrected /= np.sqrt((np.abs(corrected)**2).mean() + 1e-12)
                 plt.plot(np.real(corrected), np.imag(corrected), '.', alpha=0.5)
-                plt.title(f'Phase-Corrected DMRS - Layer {layer} - EVM: {ai_evm_results[layer]:.2f} dB')
+                conf = ai_confidence[layer] if layer < len(ai_confidence) else 0.0
+                plt.title(f'Phase-Corrected DMRS - Layer {layer} - EVM: {ai_evm_results[layer]:.2f} dB | Conf: {conf:.0f}%')
                 plt.xlabel('I')
                 plt.ylabel('Q')
                 plt.grid(True)
@@ -1465,6 +1618,23 @@ def index():
     """, scapy=SCAPY_AVAILABLE)
 
 
+@app.route('/reset_confidence', methods=['POST'])
+def reset_confidence():
+    """Reset AI confidence scores and detection history to initial values."""
+    global ai_confidence, ai_detection_history
+    ai_confidence = [0.0, 0.0, 0.0, 0.0]
+    ai_detection_history = {}
+    # Delete the history file so it doesn't reload on next analysis
+    if os.path.exists(DETECTION_HISTORY_FILE):
+        try:
+            os.remove(DETECTION_HISTORY_FILE)
+        except IOError as e:
+            print(f"Warning: Could not delete detection history file: {e}")
+    print("AI confidence scores and detection history have been reset.")
+    return jsonify({"success": True, "message": "AI confidence levels reset to 0.0 for all layers.",
+                    "ai_confidence": [0.0, 0.0, 0.0, 0.0]})
+
+
 @app.route('/progress', methods=['GET'])
 def get_progress():
     """Return current analysis progress"""
@@ -1679,6 +1849,8 @@ def upload():
                 layer_data["ai_start_prb"] = int(ai_interf_start[i])
                 layer_data["ai_end_prb"] = int(ai_interf_end[i])
                 layer_data["ai_has_interference"] = ai_has_interf[i]
+            # Add AI confidence for AI and Both modes
+            layer_data["ai_confidence"] = float(ai_confidence[i]) if i < len(ai_confidence) else 0.0
             layers_dict[f"layer_{i}"] = layer_data
 
         return jsonify({
@@ -1690,6 +1862,7 @@ def upload():
             "evm_db": evm_results_native,
             "ai_evm_db": ai_evm_native,
             "dmrs_evm_db": dmrs_evm_native,
+            "ai_confidence": [float(c) for c in ai_confidence],
             "evm_per_prb_csv": "evm_per_prb.csv",
             "snr_per_prb_csv": "snr_per_prb.csv",
             "snr_diff_per_prb_csv": "snr_diff_per_prb.csv",
@@ -1781,6 +1954,7 @@ def generate_report(data, fname, model_selection=None):
     """Generates a report using OpenAI or SLM based on model_selection"""
     global prompt, progress_status
     global ai_interf, ai_interf_start, ai_interf_end, ai_has_interf, ai_evm_results_global, current_detection_mode
+    global ai_confidence
 
     if model_selection is None:
         model_selection = ["OpenAI"]
@@ -1848,9 +2022,18 @@ def generate_report(data, fname, model_selection=None):
     | **Interference - L1**              | {interf_l1}   | Indicates if interference was found in layer 1 the packet.  |
     | **Interference - L2**              | {interf_l2}   | Indicates if interference was found in layer 2 the packet.  |
     | **Interference - L3**              | {interf_l3}   | Indicates if interference was found in layer 3 the packet.  |
+    | **AI Confidence - L0 (%)**         | {ai_conf_l0:.1f}  | AI detection confidence for layer 0 (0-100%).           |
+    | **AI Confidence - L1 (%)**         | {ai_conf_l1:.1f}  | AI detection confidence for layer 1 (0-100%).           |
+    | **AI Confidence - L2 (%)**         | {ai_conf_l2:.1f}  | AI detection confidence for layer 2 (0-100%).           |
+    | **AI Confidence - L3 (%)**         | {ai_conf_l3:.1f}  | AI detection confidence for layer 3 (0-100%).           |
     """
 
-    data_summary_filled = data_summary_template.format(safe_interf=safe_interf, link_dir=link_dir, scs_str=scs_str, interf_l0=interf_l0, interf_l1=interf_l1, interf_l2=interf_l2, interf_l3=interf_l3)
+    data_summary_filled = data_summary_template.format(
+        safe_interf=safe_interf, link_dir=link_dir, scs_str=scs_str,
+        interf_l0=interf_l0, interf_l1=interf_l1, interf_l2=interf_l2, interf_l3=interf_l3,
+        ai_conf_l0=ai_confidence[0], ai_conf_l1=ai_confidence[1],
+        ai_conf_l2=ai_confidence[2], ai_conf_l3=ai_confidence[3]
+    )
 
     aligned_summary = align_markdown_table(data_summary_filled)
 
@@ -1876,12 +2059,18 @@ def generate_report(data, fname, model_selection=None):
     | **AI EVM - L1 (dB)**               | {ai_evm1:.2f} | AI-based EVM measurement for layer 1.                       |
     | **AI EVM - L2 (dB)**               | {ai_evm2:.2f} | AI-based EVM measurement for layer 2.                       |
     | **AI EVM - L3 (dB)**               | {ai_evm3:.2f} | AI-based EVM measurement for layer 3.                       |
+    | **AI Confidence - L0 (%)**         | {ai_conf0:.1f} | AI detection confidence for layer 0 (0-100%).              |
+    | **AI Confidence - L1 (%)**         | {ai_conf1:.1f} | AI detection confidence for layer 1 (0-100%).              |
+    | **AI Confidence - L2 (%)**         | {ai_conf2:.1f} | AI detection confidence for layer 2 (0-100%).              |
+    | **AI Confidence - L3 (%)**         | {ai_conf3:.1f} | AI detection confidence for layer 3 (0-100%).              |
     """
         ai_summary_filled = ai_summary_template.format(
             ai_interf=ai_interf,
             ai_l0=ai_interf_l0, ai_l1=ai_interf_l1, ai_l2=ai_interf_l2, ai_l3=ai_interf_l3,
             ai_evm0=ai_evm_results_global[0], ai_evm1=ai_evm_results_global[1],
-            ai_evm2=ai_evm_results_global[2], ai_evm3=ai_evm_results_global[3]
+            ai_evm2=ai_evm_results_global[2], ai_evm3=ai_evm_results_global[3],
+            ai_conf0=ai_confidence[0], ai_conf1=ai_confidence[1],
+            ai_conf2=ai_confidence[2], ai_conf3=ai_confidence[3]
         )
         aligned_ai_summary = align_markdown_table(ai_summary_filled)
         ai_section = f"""

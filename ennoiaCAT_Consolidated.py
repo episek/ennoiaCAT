@@ -361,32 +361,78 @@ elif equipment_type == "ORAN PCAP Analyzer":
 
     # Check Flask server status and auto-launch if needed
     st.sidebar.subheader("🔌 Flask Server Status")
-    if helper.check_flask_server():
+
+    def _start_flask_server():
+        """Launch the Flask server subprocess."""
+        flask_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "packet_oran_analysis_flask.py")
+        if not os.path.exists(flask_script):
+            st.sidebar.error("packet_oran_analysis_flask.py not found")
+            return False
+        st.session_state.flask_process = subprocess.Popen(
+            [sys.executable, flask_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        time.sleep(3)
+        return helper.check_flask_server()
+
+    def _stop_flask_server():
+        """Terminate the Flask server subprocess (or kill by port if not tracked)."""
+        stopped = False
+        if "flask_process" in st.session_state and st.session_state.flask_process is not None:
+            try:
+                st.session_state.flask_process.terminate()
+                st.session_state.flask_process.wait(timeout=5)
+            except Exception:
+                pass
+            st.session_state.flask_process = None
+            stopped = True
+        # Fallback: kill any process listening on the Flask port
+        if not stopped or helper.check_flask_server():
+            try:
+                result = subprocess.run(
+                    ["netstat", "-ano"], capture_output=True, text=True
+                )
+                for line in result.stdout.splitlines():
+                    if f":{flask_port}" in line and "LISTENING" in line:
+                        pid = line.strip().split()[-1]
+                        subprocess.run(["taskkill", "/F", "/PID", pid],
+                                       capture_output=True)
+            except Exception:
+                pass
+            time.sleep(1)
+
+    flask_running = helper.check_flask_server()
+
+    if flask_running:
         st.sidebar.success("Flask server is running")
+        if st.sidebar.button("Restart Flask Server"):
+            _stop_flask_server()
+            if _start_flask_server():
+                st.sidebar.success("Flask server restarted successfully")
+                st.session_state.confidence_reset_done = False
+            else:
+                st.sidebar.warning("Flask server is restarting, please wait...")
+            st.rerun()
     else:
         # Auto-launch Flask server
         if "flask_process" not in st.session_state or st.session_state.flask_process is None or st.session_state.flask_process.poll() is not None:
-            flask_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "packet_oran_analysis_flask.py")
-            if os.path.exists(flask_script):
-                st.sidebar.info("Starting Flask server...")
-                st.session_state.flask_process = subprocess.Popen(
-                    [sys.executable, flask_script],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                # Wait briefly for server to start
-                time.sleep(3)
-                if helper.check_flask_server():
-                    st.sidebar.success("Flask server started automatically")
-                else:
-                    st.sidebar.warning("Flask server is starting up, please wait...")
-                    st.rerun()
+            st.sidebar.info("Starting Flask server...")
+            if _start_flask_server():
+                st.sidebar.success("Flask server started automatically")
             else:
-                st.sidebar.error("packet_oran_analysis_flask.py not found")
+                st.sidebar.warning("Flask server is starting up, please wait...")
+                st.rerun()
         else:
             st.sidebar.warning("Flask server is starting up, please wait...")
             time.sleep(2)
             st.rerun()
+
+    # Reset AI confidence on first run of the session
+    if "confidence_reset_done" not in st.session_state:
+        if helper.check_flask_server():
+            helper.reset_confidence()
+        st.session_state.confidence_reset_done = True
 
     # File upload section
     st.sidebar.subheader("📁 PCAP File")
@@ -1533,8 +1579,18 @@ if prompt:
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
 
-        # Check for analysis commands
+        # Check for reset confidence command
         prompt_lower = prompt.lower()
+        if "reset confidence" in prompt_lower or "reset the confidence" in prompt_lower:
+            result = helper.reset_confidence()
+            with st.chat_message("assistant"):
+                if "error" in result:
+                    st.error(f"Failed to reset confidence: {result['error']}")
+                else:
+                    st.success("AI confidence levels have been reset to 0.0 for all layers. Detection history has been cleared.")
+                st.session_state.messages.append({"role": "assistant", "content": "AI confidence levels have been reset to 0.0 for all layers."})
+
+        # Check for analysis commands
         should_analyze = any(word in prompt_lower for word in ["analyze", "process", "detect", "check", "run", "start"])
 
         if should_analyze and pcap_filepath:
@@ -1639,11 +1695,12 @@ if prompt:
                                     end_prb = layer_data.get('end_prb', 'N/A')
                                     md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {dmrs_str} |\n"
 
+                                ai_confidence_list = analysis_data.get('ai_confidence', [])
                                 md_output += """
 ### AI-Based Layer Details
 
-| Layer | Start PRB | End PRB | AI EVM (dB) |
-|-------|-----------|---------|-------------|
+| Layer | Start PRB | End PRB | AI EVM (dB) | Confidence (%) |
+|-------|-----------|---------|-------------|----------------|
 """
                                 for layer_name, layer_data in layers_data.items():
                                     layer_num = layer_name.replace('layer_', '')
@@ -1654,8 +1711,26 @@ if prompt:
                                     ai_start = layer_data.get('ai_start_prb', 0)
                                     ai_end = layer_data.get('ai_end_prb', 'N/A')
                                     start_prb = ai_start + 1 if ai_has_interf else ai_start
-                                    md_output += f"| Layer {layer_num} | {start_prb} | {ai_end} | {ai_str} |\n"
+                                    conf = layer_data.get('ai_confidence', ai_confidence_list[int(layer_num)] if int(layer_num) < len(ai_confidence_list) else 0.0)
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {ai_end} | {ai_str} | {conf:.1f} |\n"
+                            elif ai_evm:
+                                # AI-only mode layer details with confidence
+                                ai_confidence_list = analysis_data.get('ai_confidence', [])
+                                md_output += """
+### Layer Details
+
+| Layer | Start PRB | End PRB | EVM (dB) | Confidence (%) |
+|-------|-----------|---------|----------|----------------|
+"""
+                                for layer_name, layer_data in layers_data.items():
+                                    layer_num = layer_name.replace('layer_', '')
+                                    has_interf = layer_data.get('has_interference', False)
+                                    start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
+                                    end_prb = layer_data.get('end_prb', 'N/A')
+                                    conf = layer_data.get('ai_confidence', ai_confidence_list[int(layer_num)] if int(layer_num) < len(ai_confidence_list) else 0.0)
+                                    md_output += f"| Layer {layer_num} | {start_prb} | {end_prb} | {layer_data.get('evm_db', 0):.2f} | {conf:.1f} |\n"
                             else:
+                                # DMRS-only mode layer details
                                 md_output += """
 ### Layer Details
 
@@ -1664,7 +1739,6 @@ if prompt:
 """
                                 for layer_name, layer_data in layers_data.items():
                                     layer_num = layer_name.replace('layer_', '')
-                                    # Start PRB: +1 (1-indexed) when interference, 0-indexed when no interference
                                     has_interf = layer_data.get('has_interference', False)
                                     start_prb = layer_data.get('start_prb', 0) + 1 if has_interf else layer_data.get('start_prb', 0)
                                     end_prb = layer_data.get('end_prb', 'N/A')

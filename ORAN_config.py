@@ -234,6 +234,18 @@ Both methods output:
         except Exception:
             return False
 
+    def reset_confidence(self):
+        """Reset AI confidence scores and detection history on the Flask server."""
+        try:
+            response = requests.post(f"{self.flask_url}/reset_confidence", timeout=5)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Server error: {response.status_code}"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Flask server not running"}
+        except Exception as e:
+            return {"error": str(e)}
+
     def get_progress(self):
         """Get analysis progress from Flask server"""
         try:
