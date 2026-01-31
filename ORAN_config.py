@@ -296,6 +296,45 @@ Both methods output:
         except Exception as e:
             return {"error": f"Request failed: {str(e)}"}
 
+    def cnn_status(self):
+        """Get CNN model status from Flask server."""
+        try:
+            response = requests.get(f"{self.flask_url}/cnn_status", timeout=5)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Server error: {response.status_code}"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Flask server not running"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def train_cnn(self):
+        """Trigger CNN training on the Flask server."""
+        try:
+            response = requests.post(f"{self.flask_url}/train_cnn", timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Server error: {response.status_code}"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Flask server not running"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def toggle_cnn(self, enable=None):
+        """Toggle or set CNN detection on the Flask server."""
+        try:
+            payload = {}
+            if enable is not None:
+                payload["enable"] = enable
+            response = requests.post(f"{self.flask_url}/toggle_cnn", json=payload, timeout=5)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Server error: {response.status_code}"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Flask server not running"}
+        except Exception as e:
+            return {"error": str(e)}
+
     def get_analysis_plots(self, plot_dir="."):
         """
         Get paths to generated analysis plots

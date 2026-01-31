@@ -107,6 +107,14 @@ def t(text):
     return translate_text(text, lang)
 
 # -----------------------------------------------------------------------------
+# SESSION STATE INIT (must be before any st.session_state access)
+# -----------------------------------------------------------------------------
+if "command_history" not in st.session_state:
+    st.session_state.command_history = []
+if "history_index" not in st.session_state:
+    st.session_state.history_index = -1
+
+# -----------------------------------------------------------------------------
 # EQUIPMENT SELECTION
 # -----------------------------------------------------------------------------
 st.sidebar.title("Equipment Selection")
@@ -454,6 +462,25 @@ elif equipment_type == "ORAN PCAP Analyzer":
                 st.sidebar.success(f"File uploaded: {uploaded_pcap.name} ({file_size / 1024 / 1024:.1f} MB)")
 
 # -----------------------------------------------------------------------------
+# COMMAND HISTORY (sidebar, before model selection)
+# -----------------------------------------------------------------------------
+st.sidebar.divider()
+with st.sidebar.expander("Command History", expanded=False):
+    if st.session_state.command_history:
+        _hist_options = list(reversed(st.session_state.command_history[-20:]))
+        _hist_choice = st.selectbox(
+            "Select a previous command to re-run:",
+            [""] + _hist_options,
+            key="_hist_select",
+            label_visibility="collapsed",
+        )
+        if _hist_choice:
+            st.session_state["_rerun_cmd"] = _hist_choice
+    else:
+        st.caption("No commands yet.")
+st.sidebar.divider()
+
+# -----------------------------------------------------------------------------
 # AI MODEL SELECTION (COMMON)
 # -----------------------------------------------------------------------------
 if helper_class:
@@ -745,11 +772,23 @@ def classify_span_wifi_bands(freqs_hz):
     return bands
 
 # -----------------------------------------------------------------------------
-# MAIN CHAT HANDLER
+# MAIN CHAT HANDLER (with command history — Up/Down arrow keys)
 # -----------------------------------------------------------------------------
+
+# Check if a history command was clicked
+_rerun_cmd = st.session_state.pop("_rerun_cmd", None)
+
 prompt = st.chat_input(f"Ask Ennoia about {equipment_type}:")
 
+# Use clicked history command if no new prompt typed
+if _rerun_cmd and not prompt:
+    prompt = _rerun_cmd
+
 if prompt:
+    # Save to command history (deduplicate consecutive)
+    if not st.session_state.command_history or st.session_state.command_history[-1] != prompt:
+        st.session_state.command_history.append(prompt)
+    st.session_state.history_index = -1
     # Start timer for Viavi OneAdvisor
     if equipment_type == "Viavi OneAdvisor":
         from timer import Timer, fmt_seconds
@@ -1590,8 +1629,74 @@ if prompt:
                     st.success("AI confidence levels have been reset to 0.0 for all layers. Detection history has been cleared.")
                 st.session_state.messages.append({"role": "assistant", "content": "AI confidence levels have been reset to 0.0 for all layers."})
 
+        # --- CNN commands ---
+        cnn_command_handled = False
+
+        # cnn_status / cnn status
+        if "cnn_status" in prompt_lower or "cnn status" in prompt_lower:
+            cnn_command_handled = True
+            result = helper.cnn_status()
+            with st.chat_message("assistant"):
+                if "error" in result:
+                    st.error(f"CNN status error: {result['error']}")
+                    msg = f"CNN status error: {result['error']}"
+                else:
+                    available = result.get("cnn_available", False)
+                    enabled = result.get("cnn_enabled", False)
+                    model_exists = result.get("model_file_exists", False)
+                    samples = result.get("training_samples", 0)
+                    status_icon = "✅" if available and enabled else "⚠️" if model_exists else "❌"
+                    msg = f"""**CNN Interference Detector Status** {status_icon}
+
+| Field | Value |
+|-------|-------|
+| **Model Available** | {"Yes" if available else "No"} |
+| **CNN Enabled** | {"Yes" if enabled else "No"} |
+| **Model File Exists** | {"Yes" if model_exists else "No"} |
+| **Training Samples** | {samples} CSV files |
+| **Detection Mode** | {"Threshold+CNN" if enabled else "Threshold only"} |"""
+                    st.markdown(msg)
+                st.session_state.messages.append({"role": "assistant", "content": msg})
+
+        # train_cnn / train cnn
+        elif "train_cnn" in prompt_lower or "train cnn" in prompt_lower:
+            cnn_command_handled = True
+            with st.chat_message("assistant"):
+                with st.spinner("Starting CNN training..."):
+                    result = helper.train_cnn()
+                if "error" in result:
+                    st.error(f"CNN training error: {result['error']}")
+                    msg = f"CNN training error: {result['error']}"
+                else:
+                    sample_count = result.get("sample_count", 0)
+                    msg = f"CNN training started in background with {sample_count} CSV sample files. Use `cnn_status` to check progress."
+                    st.success(msg)
+                st.session_state.messages.append({"role": "assistant", "content": msg})
+
+        # toggle_cnn / toggle cnn / enable cnn / disable cnn
+        elif any(kw in prompt_lower for kw in ["toggle_cnn", "toggle cnn", "enable cnn", "disable cnn"]):
+            cnn_command_handled = True
+            # Determine intent
+            if "enable" in prompt_lower:
+                enable_val = True
+            elif "disable" in prompt_lower:
+                enable_val = False
+            else:
+                enable_val = None  # toggle
+            result = helper.toggle_cnn(enable=enable_val)
+            with st.chat_message("assistant"):
+                if "error" in result:
+                    st.error(f"CNN toggle error: {result['error']}")
+                    msg = f"CNN toggle error: {result['error']}"
+                else:
+                    enabled = result.get("cnn_enabled", False)
+                    mode = "Threshold+CNN" if enabled else "Threshold only"
+                    msg = f"CNN detection **{'enabled' if enabled else 'disabled'}**. Detection mode: **{mode}**."
+                    st.markdown(msg)
+                st.session_state.messages.append({"role": "assistant", "content": msg})
+
         # Check for analysis commands
-        should_analyze = any(word in prompt_lower for word in ["analyze", "process", "detect", "check", "run", "start"])
+        should_analyze = not cnn_command_handled and any(word in prompt_lower for word in ["analyze", "process", "detect", "check", "run", "start"])
 
         if should_analyze and pcap_filepath:
             with st.status("Analyzing ORAN PCAP file...", expanded=True) as status:

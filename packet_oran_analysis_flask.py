@@ -2023,7 +2023,8 @@ def upload():
             "snr_per_prb_csv": "snr_per_prb.csv",
             "snr_diff_per_prb_csv": "snr_diff_per_prb.csv",
             "layers": layers_dict,
-            "detection_method": "Threshold+CNN" if use_cnn_detection else "Threshold",
+            "detection_method": "Threshold only" if detection_mode in ["DMRS-Based (Standard)", "Both"] else ("Threshold+CNN" if use_cnn_detection else "Threshold"),
+            "ai_detection_method": ("Threshold+CNN" if use_cnn_detection else "Threshold") if detection_mode in ["AI-Based Blind Detection", "Both"] else None,
             "cnn_available": cnn_detector is not None and cnn_detector.is_available(),
         })
 
@@ -2180,20 +2181,28 @@ def generate_report(data, fname, model_selection=None):
     | **Interference - L1**              | {interf_l1}   | Indicates if interference was found in layer 1 the packet.  |
     | **Interference - L2**              | {interf_l2}   | Indicates if interference was found in layer 2 the packet.  |
     | **Interference - L3**              | {interf_l3}   | Indicates if interference was found in layer 3 the packet.  |
-    | **AI Confidence - L0 (%)**         | {ai_conf_l0:.1f}  | AI detection confidence for layer 0 (0-100%).           |
-    | **AI Confidence - L1 (%)**         | {ai_conf_l1:.1f}  | AI detection confidence for layer 1 (0-100%).           |
-    | **AI Confidence - L2 (%)**         | {ai_conf_l2:.1f}  | AI detection confidence for layer 2 (0-100%).           |
-    | **AI Confidence - L3 (%)**         | {ai_conf_l3:.1f}  | AI detection confidence for layer 3 (0-100%).           |
+    | **AI Confidence - L0 (%)**         | {ai_conf_l0}  | AI detection confidence for layer 0 (0-100%).           |
+    | **AI Confidence - L1 (%)**         | {ai_conf_l1}  | AI detection confidence for layer 1 (0-100%).           |
+    | **AI Confidence - L2 (%)**         | {ai_conf_l2}  | AI detection confidence for layer 2 (0-100%).           |
+    | **AI Confidence - L3 (%)**         | {ai_conf_l3}  | AI detection confidence for layer 3 (0-100%).           |
     | **Detection Method**               | {det_method}  | Threshold-only or Threshold+CNN hybrid detection.           |
     """
 
-    det_method_str = "Threshold+CNN" if use_cnn_detection else "Threshold"
+    # DMRS-based and Both modes: DMRS table shows N/A for AI confidence, Threshold only
+    # AI confidence and CNN detection method only appear in the AI-Based table
+    if current_detection_mode in ["DMRS-Based (Standard)", "Both"]:
+        ai_conf_vals = ["N/A", "N/A", "N/A", "N/A"]
+        det_method_str = "Threshold only"
+    else:
+        # AI-Based Blind Detection (standalone)
+        ai_conf_vals = [f"{ai_confidence[i]:.1f}" for i in range(4)]
+        det_method_str = "Threshold+CNN" if use_cnn_detection else "Threshold"
 
     data_summary_filled = data_summary_template.format(
         safe_interf=safe_interf, link_dir=link_dir, scs_str=scs_str,
         interf_l0=interf_l0, interf_l1=interf_l1, interf_l2=interf_l2, interf_l3=interf_l3,
-        ai_conf_l0=ai_confidence[0], ai_conf_l1=ai_confidence[1],
-        ai_conf_l2=ai_confidence[2], ai_conf_l3=ai_confidence[3],
+        ai_conf_l0=ai_conf_vals[0], ai_conf_l1=ai_conf_vals[1],
+        ai_conf_l2=ai_conf_vals[2], ai_conf_l3=ai_conf_vals[3],
         det_method=det_method_str,
     )
 
@@ -2207,6 +2216,8 @@ def generate_report(data, fname, model_selection=None):
         ai_interf_l1 = "None" if not ai_has_interf[1] else f"Detected in PRBs {ai_interf_start[1]+1}-{ai_interf_end[1]}"
         ai_interf_l2 = "None" if not ai_has_interf[2] else f"Detected in PRBs {ai_interf_start[2]+1}-{ai_interf_end[2]}"
         ai_interf_l3 = "None" if not ai_has_interf[3] else f"Detected in PRBs {ai_interf_start[3]+1}-{ai_interf_end[3]}"
+
+        ai_det_method_str = "Threshold+CNN" if use_cnn_detection else "Threshold"
 
         ai_summary_template = """
     | **AI Detection Variable**          | **Value**     | **Description**                                             |
@@ -2225,6 +2236,7 @@ def generate_report(data, fname, model_selection=None):
     | **AI Confidence - L1 (%)**         | {ai_conf1:.1f} | AI detection confidence for layer 1 (0-100%).              |
     | **AI Confidence - L2 (%)**         | {ai_conf2:.1f} | AI detection confidence for layer 2 (0-100%).              |
     | **AI Confidence - L3 (%)**         | {ai_conf3:.1f} | AI detection confidence for layer 3 (0-100%).              |
+    | **AI Detection Method**            | {ai_det_method} | Threshold-only or Threshold+CNN hybrid detection.         |
     """
         ai_summary_filled = ai_summary_template.format(
             ai_interf=ai_interf,
@@ -2232,7 +2244,8 @@ def generate_report(data, fname, model_selection=None):
             ai_evm0=ai_evm_results_global[0], ai_evm1=ai_evm_results_global[1],
             ai_evm2=ai_evm_results_global[2], ai_evm3=ai_evm_results_global[3],
             ai_conf0=ai_confidence[0], ai_conf1=ai_confidence[1],
-            ai_conf2=ai_confidence[2], ai_conf3=ai_confidence[3]
+            ai_conf2=ai_confidence[2], ai_conf3=ai_confidence[3],
+            ai_det_method=ai_det_method_str,
         )
         aligned_ai_summary = align_markdown_table(ai_summary_filled)
         ai_section = f"""
